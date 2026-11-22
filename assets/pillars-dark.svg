@@ -1,44 +1,53 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 210" width="1200" height="210" fill="none" shape-rendering="geometricPrecision">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" width="900" height="330" fill="none" shape-rendering="geometricPrecision">
   <!-- Container -->
-  <rect x="1" y="1" width="1198" height="208" rx="6" fill="#0D1117" stroke="#30363D" stroke-width="1.5" />
+  <rect x="1" y="1" width="898" height="328" rx="6" fill="#0D1117" stroke="#30363D" stroke-width="1.5" />
 
   <!-- Column Dividers -->
-  <line x1="400" y1="20" x2="400" y2="190" stroke="#30363D" stroke-width="1" />
-  <line x1="800" y1="20" x2="800" y2="190" stroke="#30363D" stroke-width="1" />
+  <line x1="306" y1="28" x2="306" y2="302" stroke="#30363D" stroke-width="1" />
+  <line x1="594" y1="28" x2="594" y2="302" stroke="#30363D" stroke-width="1" />
 
   <!-- COLUMN 1: Epidemiology and Climate -->
-  <g transform="translate(36, 26)">
-    <text x="0" y="16" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">01 // EPIDEMIOLOGY AND CLIMATE</text>
-    <text x="0" y="44" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="18" font-weight="600" fill="#F7F6F2">Extreme Heat and Envenomations</text>
-    <text x="0" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">Non-linear distributed lag models (DLNM)</text>
-    <text x="0" y="89" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">and time-stratified case-crossover on</text>
-    <text x="0" y="108" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">3.6M+ SINAN records across Brazilian biomes.</text>
-    
-    <rect x="0" y="128" width="330" height="26" rx="3" fill="#161B22" stroke="#30363D" stroke-width="1" />
-    <text x="10" y="145" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="10" font-weight="500" fill="#3FB6A8">R · dlnm · gnm · fixest · DuckDB · Parquet</text>
+  <g transform="translate(36, 0)">
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">01 // EPIDEMIOLOGY AND CLIMATE</text>
+    <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Extreme Heat and</text>
+    <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Envenomations</text>
+    <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Non-linear distributed lag models (DLNM)</text>
+    <text x="0" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">and time-stratified case-crossover on</text>
+    <text x="0" y="178" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">3.6M+ SINAN records in Brazil.</text>
+
+    <!-- Stack Box -->
+    <rect x="0" y="224" width="252" height="76" rx="4" fill="#161B22" stroke="#30363D" stroke-width="1" />
+    <text x="14" y="252" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">R · dlnm · gnm · fixest</text>
+    <text x="14" y="276" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">DuckDB · Parquet</text>
   </g>
 
   <!-- COLUMN 2: Primary Care Intelligence -->
-  <g transform="translate(436, 26)">
-    <text x="0" y="16" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">02 // PRIMARY CARE INTELLIGENCE</text>
-    <text x="0" y="44" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="18" font-weight="600" fill="#F7F6F2">Clinical Monitoring and Risk Triage</text>
-    <text x="0" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">Risk stratification, care cascades and</text>
-    <text x="0" y="89" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">automated clinical decision support across</text>
-    <text x="0" y="108" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">230+ clinics and millions of patient encounters.</text>
-    
-    <rect x="0" y="128" width="330" height="26" rx="3" fill="#161B22" stroke="#30363D" stroke-width="1" />
-    <text x="10" y="145" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="10" font-weight="500" fill="#3FB6A8">Google BigQuery · SQL · dbt · Python · Quarto</text>
+  <g transform="translate(324, 0)">
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">02 // PRIMARY CARE INTELLIGENCE</text>
+    <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Clinical Monitoring</text>
+    <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">and Risk Triage</text>
+    <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Risk stratification, care cascades and</text>
+    <text x="0" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">automated clinical decision support across</text>
+    <text x="0" y="178" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">230+ clinics in Rio de Janeiro.</text>
+
+    <!-- Stack Box -->
+    <rect x="0" y="224" width="252" height="76" rx="4" fill="#161B22" stroke="#30363D" stroke-width="1" />
+    <text x="14" y="252" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">Google BigQuery · SQL</text>
+    <text x="14" y="276" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">R · Python · Clinical NLP</text>
   </g>
 
   <!-- COLUMN 3: Regulatory Biostatistics and 3Rs -->
-  <g transform="translate(836, 26)">
-    <text x="0" y="16" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">03 // REGULATORY BIOSTATISTICS AND 3RS</text>
-    <text x="0" y="44" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="18" font-weight="600" fill="#F7F6F2">Bioassay Validation and 3Rs Science</text>
-    <text x="0" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">Retrospective validation, Probit, Spearman-</text>
-    <text x="0" y="89" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">Kärber and Bland-Altman agreement cutting</text>
-    <text x="0" y="108" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" fill="#C9D1D9">animal testing time and distress under 17025.</text>
-    
-    <rect x="0" y="128" width="330" height="26" rx="3" fill="#161B22" stroke="#30363D" stroke-width="1" />
-    <text x="10" y="145" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="10" font-weight="500" fill="#3FB6A8">R · Shiny · Bland-Altman · Probit · Bootstrap</text>
+  <g transform="translate(612, 0)">
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">03 // REGULATORY BIOSTATISTICS AND 3RS</text>
+    <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Bioassay Validation</text>
+    <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">and 3Rs Science</text>
+    <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Retrospective validation, Probit, Spearman-</text>
+    <text x="0" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Kärber and Bland-Altman agreement cutting</text>
+    <text x="0" y="178" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">animal testing under ISO/IEC 17025.</text>
+
+    <!-- Stack Box -->
+    <rect x="0" y="224" width="252" height="76" rx="4" fill="#161B22" stroke="#30363D" stroke-width="1" />
+    <text x="14" y="252" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">R · Shiny · Probit</text>
+    <text x="14" y="276" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="13" font-weight="600" fill="#3FB6A8">Spearman-Kärber · Lin's CCC</text>
   </g>
 </svg>
