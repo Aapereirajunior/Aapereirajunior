@@ -1,4 +1,4 @@
-<a href="https://aapj.dev" target="_blank" rel="noopener noreferrer">
+<a href="https://aapj.dev">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/header-light.svg">
@@ -18,20 +18,22 @@
 
 Health Data Scientist and Public Health Specialist at the Healthcare Intelligence Center (NIA / SMS-Rio), developing epidemiological indicators, longitudinal clinical care cascades, and scalable SQL/BigQuery pipelines for primary healthcare. PhD candidate in Public Health Epidemiology at ENSP / Fiocruz (OSF protocol `ykn6b`) modeling climate extremes and envenomations, with specialization in Health Informatics (UNIFESP) and prior experience in biological quality control and 3Rs alternative methods at INCQS / Fiocruz.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/pillars-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/pillars-light.svg">
-  <img alt="Research and Practice Pillars — AAPJ.dev" src="assets/pillars-light.svg" width="100%">
-</picture>
+<a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/pillars-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/pillars-light.svg">
+    <img alt="Research and Practice Pillars — AAPJ.dev" src="assets/pillars-light.svg" width="100%">
+  </picture>
+</a>
 
 ### Selected Work and Open Research
 
 | Initiative / Focus Area | Domain and Scope | Key Stack | Reference and Code |
 | :--- | :--- | :--- | :--- |
 | **Primary Care Clinical Intelligence** | Longitudinal care cascades, clinical risk stratification, and surveillance across 230+ municipal health centers. | Google BigQuery SQL, R, Python, Clinical NLP | [Case Study on aapj.dev](https://aapj.dev/projetos/01-nia-inteligencia-assistencial) |
-| **Heatwaves and Venomous Animal Accidents** | Non-linear distributed lag models (DLNM) and time-stratified case-crossover on 3.6M+ SINAN records across Brazilian biomes. | R (`dlnm`, `gnm`, `fixest`), DuckDB, Apache Parquet | [Case Study](https://aapj.dev/projetos/02-ondas-calor-peconhentos) · [`sus-duckdb-parquet-pipeline`](https://github.com/Aapereirajunior/sus-duckdb-parquet-pipeline) |
-| **BioPotency and 3Rs Assay Validation** | Retrospective regulatory validation of 518 bioassays (Probit, Spearman-Kärber, Bland-Altman, Lin CCC) reducing animal distress by 50%. | R, Shiny, Bootstrapping, ISO/IEC 17025 | [Case Study](https://aapj.dev/projetos/03-biopotency-shiny-3rs) · [`biopotency-3rs-methods`](https://github.com/Aapereirajunior/biopotency-3rs-methods) |
-| **Editorial Scientific Visuals and Portfolio** | High-density typography, accessible data visualization palettes, and reproducible publication figures. | Astro, Tailwind CSS, TypeScript, Sveltia CMS | [`aapj.dev`](https://aapj.dev) · [`aapj-editorial-r-theme`](https://github.com/Aapereirajunior/aapj-editorial-r-theme) |
+| **Heatwaves and Venomous Animal Accidents** | Non-linear distributed lag models (DLNM) and time-stratified case-crossover on 3.6M+ SINAN records across Brazilian municipalities. | R (`dlnm`, `gnm`, `fixest`), DuckDB, Apache Parquet | [Case Study](https://aapj.dev/projetos/02-ondas-calor-peconhentos) · [`sus-duckdb-parquet-pipeline`](https://github.com/Aapereirajunior/sus-duckdb-parquet-pipeline) |
+| **BioPotency and 3Rs Assay Validation** | Retrospective regulatory validation of 518 bioassays (Probit, Spearman-Kärber, Bland-Altman, Lin's CCC) halving observation time (48h to 24h) under ISO/IEC 17025. | R, Shiny, Probit, Spearman-Kärber, ISO/IEC 17025 | [Case Study](https://aapj.dev/projetos/03-biopotency-shiny-3rs) · [`biopotency-3rs-methods`](https://github.com/Aapereirajunior/biopotency-3rs-methods) |
+| **Scientific Visualization and Portfolio** | Publication-ready `ggplot2` themes, colorblind-safe palettes, and reproducible research portfolio. | R (`ggplot2`), Astro, Tailwind CSS, TypeScript | [`aapj.dev`](https://aapj.dev) · [`aapj-editorial-r-theme`](https://github.com/Aapereirajunior/aapj-editorial-r-theme) |
 
 ### Selected Peer-Reviewed Publications
 
