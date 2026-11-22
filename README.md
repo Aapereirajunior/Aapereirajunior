@@ -28,12 +28,12 @@ Health Data Scientist and Public Health Specialist at the Healthcare Intelligenc
 
 ### Selected Work and Open Research
 
-| Initiative / Focus Area | Domain and Scope | Key Stack | Reference and Code |
+| Initiative / Focus Area | Domain and Scope | Key Stack | Reference |
 | :--- | :--- | :--- | :--- |
 | **Primary Care Clinical Intelligence** | Longitudinal care cascades, clinical risk stratification, and surveillance across 230+ municipal health centers. | Google BigQuery SQL, R, Python, Clinical NLP | [Case Study on aapj.dev](https://aapj.dev/projetos/01-nia-inteligencia-assistencial) |
-| **Heatwaves and Venomous Animal Accidents** | Non-linear distributed lag models (DLNM) and time-stratified case-crossover on 3.6M+ SINAN records across Brazilian municipalities. | R (`dlnm`, `gnm`, `fixest`), DuckDB, Apache Parquet | [Case Study](https://aapj.dev/projetos/02-ondas-calor-peconhentos) · [`sus-duckdb-parquet-pipeline`](https://github.com/Aapereirajunior/sus-duckdb-parquet-pipeline) |
-| **BioPotency and 3Rs Assay Validation** | Retrospective regulatory validation of 518 bioassays (Probit, Spearman-Kärber, Bland-Altman, Lin's CCC) halving observation time (48h to 24h) under ISO/IEC 17025. | R, Shiny, Probit, Spearman-Kärber, ISO/IEC 17025 | [Case Study](https://aapj.dev/projetos/03-biopotency-shiny-3rs) · [`biopotency-3rs-methods`](https://github.com/Aapereirajunior/biopotency-3rs-methods) |
-| **Scientific Visualization and Portfolio** | Publication-ready `ggplot2` themes, colorblind-safe palettes, and reproducible research portfolio. | R (`ggplot2`), Astro, Tailwind CSS, TypeScript | [`aapj.dev`](https://aapj.dev) · [`aapj-editorial-r-theme`](https://github.com/Aapereirajunior/aapj-editorial-r-theme) |
+| **Heatwaves and Venomous Animal Accidents** | Non-linear distributed lag models (DLNM) and time-stratified case-crossover on 3.6M+ SINAN records across Brazilian municipalities. | R (`dlnm`, `gnm`, `fixest`), DuckDB, Apache Parquet | [Case Study](https://aapj.dev/projetos/02-ondas-calor-peconhentos) |
+| **BioPotency and 3Rs Assay Validation** | Retrospective regulatory validation of 518 bioassays (Probit, Spearman-Kärber, Bland-Altman, Lin's CCC) halving observation time (48h to 24h) under ISO/IEC 17025. | R, Shiny, Probit, Spearman-Kärber, ISO/IEC 17025 | [Case Study](https://aapj.dev/projetos/03-biopotency-shiny-3rs) |
+| **Scientific Visualization and Portfolio** | Publication-ready `ggplot2` themes, colorblind-safe palettes, and reproducible research portfolio. | R (`ggplot2`), Astro, Tailwind CSS, TypeScript | [`aapj.dev`](https://aapj.dev) |
 
 ### Selected Peer-Reviewed Publications
 
@@ -42,14 +42,14 @@ Health Data Scientist and Public Health Specialist at the Healthcare Intelligenc
 3. **Pereira-Júnior, A. A.**, Silva, M. E. S., Carneiro, L. S., Aguiar, A. S., Souza, G. M., Dias, M. V. S., Bicalho, M. A. C. (2022). *Behavioral and neurochemical changes induced by nicotine exposure during lactation and/or stress in adult mice*. **International Journal of Developmental Neuroscience**, 82(8), 758–770. [doi:10.1002/jdn.10227](https://doi.org/10.1002/jdn.10227)
 4. Martínez-Sobalvarro, C. E., **Pereira-Júnior, A. A.**, Silva, M. E. S., Oliveira, M. P., Dias, M. V. S., Bicalho, M. A. C. (2022). *Hospital antimicrobial stewardship programs in surgical antimicrobial prophylaxis: a systematic review*. **International Journal of Clinical Pharmacy**, 44, 301–319. [doi:10.1007/s11096-021-01358-4](https://doi.org/10.1007/s11096-021-01358-4)
 
-[View all 7 peer-reviewed publications with open data on aapj.dev →](https://aapj.dev/#publicacoes)
+[View all 7 peer-reviewed publications on aapj.dev →](https://aapj.dev/#publicacoes)
 
 ### Technical Stack
 
 | Layer | Tools and Environments |
 | :--- | :--- |
 | **Epidemiology and Statistics** | R (`dlnm`, `gnm`, `fixest`, `survival`, `ggplot2`, `gt`, `data.table`), Shiny, Biostatistics, Non-linear Time Series |
-| **Data Engineering** | Google BigQuery SQL, DuckDB, Apache Parquet, Python (`pandas`, `polars`), dbt, ETL Pipelines |
+| **Data Engineering** | Google BigQuery SQL, DuckDB, Apache Parquet, Python (`pandas`, `polars`), ETL Pipelines |
 | **Web and Publishing** | Astro, Tailwind CSS, TypeScript, Quarto, Markdown / MDX, Sveltia CMS, LaTeX |
 | **Infrastructure** | Git, GitHub Actions, Docker, Linux, Cloudflare Pages |
 

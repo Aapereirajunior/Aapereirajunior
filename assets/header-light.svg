@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 225" width="900" height="225" fill="none" shape-rendering="geometricPrecision">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 235" width="900" height="235" fill="none" shape-rendering="geometricPrecision">
   <defs>
     <linearGradient id="aa-grad-light" x1="10.5" y1="17.5" x2="37.5" y2="17.5" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#14171A" />
@@ -7,10 +7,10 @@
   </defs>
 
   <!-- Container -->
-  <rect x="1" y="1" width="898" height="223" rx="6" fill="#F7F6F2" stroke="#E4E2DA" stroke-width="1.5" />
+  <rect x="1" y="1" width="898" height="233" rx="6" fill="#F7F6F2" stroke="#E4E2DA" stroke-width="1.5" />
 
-  <!-- TOP BAR: Monogram + Brand + Topic Kicker -->
-  <g transform="translate(44, 20)">
+  <!-- TOP BAR: Monogram + Brand Centered as a Group around x=450 -->
+  <g transform="translate(346, 24)">
     <!-- Monogram AA (viewBox 0 0 48 30 scaled 1.35) -->
     <g transform="scale(1.35)">
       <path d="M 3 25 C 10 25, 13.5 5, 19 5 C 24.5 5, 28 25, 35 25" stroke="#14171A" stroke-width="2.2" stroke-linecap="round" fill="none" />
@@ -20,21 +20,18 @@
     </g>
 
     <!-- Brand signature -->
-    <text x="80" y="29" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="28" font-weight="600" fill="#14171A" letter-spacing="-0.01em">AAPJ<tspan font-family="'JetBrains Mono', 'Consolas', monospace" font-size="22" font-weight="600" fill="#0F6E65">.dev</tspan></text>
+    <text x="78" y="29" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="28" font-weight="600" fill="#14171A" letter-spacing="-0.01em">AAPJ<tspan font-family="'JetBrains Mono', 'Consolas', monospace" font-size="22" font-weight="600" fill="#0F6E65">.dev</tspan></text>
   </g>
 
-  <!-- Kicker on Top Right -->
-  <text x="856" y="50" text-anchor="end" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12" font-weight="600" fill="#525B65" letter-spacing="0.08em">PUBLIC HEALTH · EPIDEMIOLOGY · DATA</text>
+  <!-- AUTHOR NAME (Centered) -->
+  <text x="450" y="118" text-anchor="middle" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="42" font-weight="500" fill="#14171A" letter-spacing="-0.02em">Antonio Alves Pereira Júnior</text>
 
-  <!-- AUTHOR NAME -->
-  <text x="44" y="116" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="42" font-weight="500" fill="#14171A" letter-spacing="-0.02em">Antonio Alves Pereira Júnior</text>
+  <!-- ROLE / TITLE (Centered) -->
+  <text x="450" y="154" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="19" font-weight="500" fill="#0F6E65">Health Data Scientist and Public Health Specialist</text>
 
-  <!-- ROLE / TITLE -->
-  <text x="44" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="19" font-weight="500" fill="#0F6E65">Health Data Scientist and Public Health Specialist</text>
+  <!-- HAIRLINE DIVIDER (Centered) -->
+  <line x1="120" y1="180" x2="780" y2="180" stroke="#E4E2DA" stroke-width="1" />
 
-  <!-- HAIRLINE DIVIDER -->
-  <line x1="44" y1="176" x2="856" y2="176" stroke="#E4E2DA" stroke-width="1" />
-
-  <!-- INSTITUTIONAL FOOTER -->
-  <text x="44" y="202" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="14" font-weight="500" fill="#525B65" letter-spacing="0.02em">Rio de Janeiro, BR  ·  NIA / SMS-Rio  ·  ENSP / Fiocruz  ·  UNIFESP</text>
+  <!-- INSTITUTIONAL FOOTER (Centered) -->
+  <text x="450" y="208" text-anchor="middle" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="14" font-weight="500" fill="#525B65" letter-spacing="0.02em">Rio de Janeiro, BR  ·  NIA / SMS-Rio  ·  ENSP / Fiocruz  ·  UNIFESP</text>
 </svg>

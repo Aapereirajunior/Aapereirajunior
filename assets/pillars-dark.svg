@@ -8,7 +8,7 @@
 
   <!-- COLUMN 1: Epidemiology and Climate -->
   <g transform="translate(36, 0)">
-    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">01 // EPIDEMIOLOGY AND CLIMATE</text>
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.6">01 // EPIDEMIOLOGY · CLIMATE</text>
     <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Extreme Heat and</text>
     <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Envenomations</text>
     <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Non-linear distributed lag models (DLNM)</text>
@@ -23,7 +23,7 @@
 
   <!-- COLUMN 2: Primary Care Intelligence -->
   <g transform="translate(324, 0)">
-    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">02 // PRIMARY CARE INTELLIGENCE</text>
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.6">02 // PRIMARY CARE INTELLIGENCE</text>
     <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Clinical Monitoring</text>
     <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">and Risk Triage</text>
     <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Risk stratification, care cascades and</text>
@@ -38,12 +38,12 @@
 
   <!-- COLUMN 3: Regulatory Biostatistics and 3Rs -->
   <g transform="translate(612, 0)">
-    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="12.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.08em">03 // REGULATORY BIOSTATISTICS AND 3RS</text>
+    <text x="0" y="44" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="11.5" font-weight="700" fill="#3FB6A8" letter-spacing="0.6">03 // BIOSTATISTICS · 3RS</text>
     <text x="0" y="78" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">Bioassay Validation</text>
     <text x="0" y="106" font-family="'Newsreader', 'Charter', 'Georgia', serif" font-size="22" font-weight="600" fill="#F7F6F2">and 3Rs Science</text>
     <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Retrospective validation, Probit, Spearman-</text>
     <text x="0" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">Kärber and Bland-Altman agreement cutting</text>
-    <text x="0" y="178" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">animal testing under ISO/IEC 17025.</text>
+    <text x="0" y="178" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" fill="#C9D1D9">assay duration under ISO/IEC 17025.</text>
 
     <!-- Stack Box -->
     <rect x="0" y="224" width="252" height="76" rx="4" fill="#161B22" stroke="#30363D" stroke-width="1" />
