@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.env
+build/
+dist/
+.venv/
+# projetos criados com `sciforge init` dentro do repositório
+/projetos/

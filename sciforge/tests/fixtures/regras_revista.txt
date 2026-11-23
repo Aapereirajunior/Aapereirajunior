@@ -1,0 +1,8 @@
+Revista: Cadernos de Saúde Pública (fictício para testes)
+Idioma: português
+Estilo: vancouver
+Limite de palavras: 3500
+Resumo: até 250 palavras
+Estrutura do resumo: Objetivo; Métodos; Resultados; Conclusão
+Tabelas e figuras: até 5
+Referências: até 40

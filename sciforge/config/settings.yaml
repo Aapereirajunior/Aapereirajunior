@@ -1,0 +1,100 @@
+# SciForge v2 — configuração global.
+# Um projeto pode sobrescrever qualquer chave criando <projeto>/01_estado/settings.override.yaml
+
+idioma: pt-BR               # pt-BR | en (idioma do manuscrito; regras_revista.txt tem prioridade)
+csl_padrao: vancouver       # vancouver | abnt | <nome de qualquer estilo do repositório citation-style-language/styles>
+
+# strict : TODA chamada de LLM vai ao Ollama local (nenhum dado sai da máquina)
+# hybrid : Fases 1 e 4 (dados, logs, erros de R) exclusivamente no Ollama; demais fases podem usar nuvem
+#          somente com resultados já agregados em 04_resultados_verificados.json
+# cloud  : todas as fases podem usar nuvem (apenas para dados públicos/anonimizados)
+privacy_mode: hybrid
+
+llm:
+  providers:
+    gemini:
+      kind: gemini
+      api_key_env: GEMINI_API_KEY
+      base_url: https://generativelanguage.googleapis.com/v1beta
+      timeout_s: 180
+    openai:
+      kind: openai
+      api_key_env: OPENAI_API_KEY
+      base_url_env: OPENAI_BASE_URL
+      base_url: https://api.openai.com/v1
+      timeout_s: 180
+    ollama:
+      kind: ollama
+      host_env: OLLAMA_HOST
+      base_url: http://localhost:11434
+      timeout_s: 900
+      local: true
+  # Papel -> provedor/modelo. "sensitive" é sempre forçado ao provedor local em strict/hybrid.
+  roles:
+    default:     { provider: gemini, model: gemini-2.5-pro }
+    fast:        { provider: gemini, model: gemini-2.5-flash }
+    vision:      { provider: gemini, model: gemini-2.5-flash }
+    writer:      { provider: gemini, model: gemini-2.5-pro }
+    reviewer:    { provider: openai, model: gpt-4.1 }
+    local:       { provider: ollama, model: qwen2.5-coder:14b }
+    local_vision: { provider: ollama, model: qwen2.5vl:7b }
+  # Preço em USD por 1M tokens (entrada, saída). Modelos locais custam 0.
+  pricing:
+    gemini-2.5-pro:   [1.25, 10.0]
+    gemini-2.5-flash: [0.30, 2.50]
+    gpt-4.1:          [2.00, 8.00]
+    gpt-4.1-mini:     [0.40, 1.60]
+  temperature: 0.3
+  max_output_tokens: 8192
+
+# Trava 8 — disjuntor de custo
+budget:
+  global_max_cost_usd: 25.0
+  phases:
+    phase1: { max_tokens: 200000,  max_cost_usd: 2.0, max_calls: 30 }
+    phase2: { max_tokens: 1500000, max_cost_usd: 6.0, max_calls: 120 }
+    phase3: { max_tokens: 400000,  max_cost_usd: 3.0, max_calls: 20 }
+    phase4: { max_tokens: 1200000, max_cost_usd: 5.0, max_calls: 80 }
+    phase5: { max_tokens: 200000,  max_cost_usd: 2.0, max_calls: 10 }
+    phase6: { max_tokens: 1500000, max_cost_usd: 7.0, max_calls: 120 }
+  limits:
+    r_script_max_retries: 4
+    figure_qa_max_cycles: 2
+    reviewer_max_rounds: 2
+    firewall_regen_max: 2
+
+literature:
+  per_source_max: 40
+  years_back_state_of_art: 5
+  final_pool_max: 60
+  rate_limits_rps:          # requisições por segundo por fonte
+    openalex: 8
+    europepmc: 5
+    crossref: 5
+    semanticscholar: 0.9
+  max_retries: 5
+  backoff_base_s: 1.5
+  fetch_open_access_fulltext: true
+  fulltext_max_chars: 12000
+
+analysis:
+  use_renv: true
+  rscript_timeout_s: 1800
+  r_packages: [tidyverse, gtsummary, gt, flextable, ggplot2, jsonlite, broom, arrow, data.table, fst, viridisLite, svglite]
+  max_unexplained_sample_loss: 0.20   # perda amostral > 20% exige justificativa explícita no fluxo
+  figure_min_dpi: 300
+
+integrity:
+  draft_ngram_n: 6
+  draft_recycled_sentence_containment: 0.5
+  draft_max_recycled_ratio: 0.10
+  firewall_ngram_n: 10                # n-grama usado para detectar vazamento do rascunho em prompts
+  firewall_max_shared_ngrams: 2
+  plagiarism_ngram_n: 6
+  plagiarism_containment_alert: 0.35
+  citation_support_min_score: 0.12
+  numeric_relative_tolerance: 0.005
+
+render:
+  formats: [docx, pdf]
+  reference_doc: null       # caminho opcional para template .docx
