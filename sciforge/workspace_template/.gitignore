@@ -1,6 +1,0 @@
-# Dados individuais e intermediários nunca devem ser versionados
-00_semente/dados/*
-!00_semente/dados/.gitkeep
-02_analise/intermediarios/
-02_analise/renv/library/
-01_estado/*.sqlite*
