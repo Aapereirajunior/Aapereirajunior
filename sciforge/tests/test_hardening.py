@@ -371,7 +371,9 @@ def test_goose_recipes_are_valid_and_isolated():
 # 6. Roteamento multi-modelo por fase, Claude e OpenRouter
 # =============================================================================================
 
-def test_phase_routing_cloud_hybrid_and_strict():
+def test_phase_routing_cloud_hybrid_and_strict(monkeypatch):
+    for var in ("SCIFORGE_OLLAMA_MODEL", "SCIFORGE_OLLAMA_VISION_MODEL"):
+        monkeypatch.delenv(var, raising=False)
     s = load_settings()
     s["privacy_mode"] = "cloud"
     c = LLMClient(s)
@@ -386,7 +388,11 @@ def test_phase_routing_cloud_hybrid_and_strict():
     assert name("fast", "phase6") == "gemini:gemini-2.5-flash"
     s["privacy_mode"] = "hybrid"
     c = LLMClient(s)
-    assert name("default", "phase1") == "ollama:qwen2.5-coder:14b"
+    assert name("default", "phase1") == "ollama:qwen2.5-coder:7b"      # padrão leve (4-8 GB de VRAM)
+    assert name("vision", "phase4", True) == "ollama:qwen2.5vl:3b"
+    monkeypatch.setenv("SCIFORGE_OLLAMA_MODEL", "qwen2.5-coder:14b")
+    monkeypatch.setenv("SCIFORGE_OLLAMA_VISION_MODEL", "qwen2.5vl:7b")
+    assert name("default", "phase4") == "ollama:qwen2.5-coder:14b"     # trocado pelo .env
     assert name("vision", "phase4", True) == "ollama:qwen2.5vl:7b"
     assert name("default", "phase3") == "claude:claude-opus-5-5"
     s["llm"]["phases"]["phase4"]["local"] = {"provider": "openrouter", "model": "x/y"}
@@ -502,3 +508,26 @@ def test_llm_client_records_cost_per_phase_with_fake(workspace):
     asyncio.run(client.complete(system="Revisor #2", user="x", phase="phase3", role="reviewer"))
     usage = st.usage_by_phase("phase3")["phase3"]
     assert usage["calls"] == 1 and usage["cost"] > 0
+
+
+def test_native_key_defaults_for_anthropic_openrouter_and_ollama(monkeypatch):
+    from sciforge.core.llm_client import LLMError, OllamaProvider, OpenAICompatProvider
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-x")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    orp = OpenAICompatProvider("meu_or", {"kind": "openrouter"})             # sem chave/URL no settings
+    assert orp.api_key == "sk-or-x" and orp.base_url == "https://openrouter.ai/api/v1"
+    assert orp.extra_headers == {"X-Title": "SciForge"}
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    with pytest.raises(LLMError, match="OPENROUTER_API_KEY"):
+        asyncio.run(OpenAICompatProvider("meu_or", {"kind": "openrouter"}).generate("m", LLMRequest(system="s", user="u")))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
+        AnthropicProvider("claude", {"kind": "anthropic"}).client()
+    monkeypatch.delenv("SCIFORGE_OLLAMA_NUM_CTX", raising=False)
+    assert OllamaProvider("ollama", {}).num_ctx == 8192
+    monkeypatch.setenv("SCIFORGE_OLLAMA_NUM_CTX", "16384")
+    assert OllamaProvider("ollama", {}).num_ctx == 16384
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for var in ("ANTHROPIC_API_KEY=", "OPENROUTER_API_KEY=", "SCIFORGE_OLLAMA_MODEL=qwen2.5-coder:7b"):
+        assert var in env_example

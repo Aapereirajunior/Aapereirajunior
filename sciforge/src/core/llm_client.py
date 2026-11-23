@@ -142,14 +142,27 @@ class GeminiProvider:
                            int(usage.get("candidatesTokenCount", estimate_tokens(text))), self.name, model)
 
 
+# Padrões nativos por tipo de provedor: funcionam mesmo se settings.yaml omitir chave e URL.
+PROVIDER_DEFAULTS = {
+    "openai": {"api_key_env": "OPENAI_API_KEY", "base_url": "https://api.openai.com/v1"},
+    "openrouter": {"api_key_env": "OPENROUTER_API_KEY", "base_url": "https://openrouter.ai/api/v1",
+                   "base_url_env": "OPENROUTER_BASE_URL", "extra_headers": {"X-Title": "SciForge"}},
+    "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
+    "gemini": {"api_key_env": "GEMINI_API_KEY"},
+}
+
+
 class OpenAICompatProvider:
     def __init__(self, name: str, cfg: dict):
         self.name = name
+        self.kind = cfg.get("kind", "openai")
+        defaults = PROVIDER_DEFAULTS.get(self.kind, PROVIDER_DEFAULTS["openai"])
+        cfg = {**defaults, **{k: v for k, v in cfg.items() if v is not None}}
         self.local = bool(cfg.get("local", False))
-        self.api_key = os.environ.get(cfg.get("api_key_env", "OPENAI_API_KEY"), "")
+        self.api_key_env = cfg["api_key_env"]
+        self.api_key = os.environ.get(self.api_key_env, "")
         base_env = cfg.get("base_url_env")
-        self.base_url = (os.environ.get(base_env) if base_env else None) or cfg.get(
-            "base_url", "https://api.openai.com/v1")
+        self.base_url = (os.environ.get(base_env) if base_env else None) or cfg.get("base_url")
         self.base_url = self.base_url.rstrip("/")
         self.timeout = float(cfg.get("timeout_s", 180))
         # OpenRouter (e outros gateways) aceitam cabeçalhos extras de identificação do app.
@@ -158,7 +171,8 @@ class OpenAICompatProvider:
 
     async def generate(self, model: str, req: LLMRequest) -> LLMResponse:
         if not self.api_key and not self.local:
-            raise LLMError(f"Chave de API ausente para o provedor {self.name}")
+            raise LLMError(f"Provedor '{self.name}': defina {self.api_key_env} no .env "
+                           f"(veja .env.example) ou aponte o papel para outro provedor em settings.yaml.")
         content: Any = req.user
         if req.images:
             content = [{"type": "text", "text": req.user}]
@@ -197,6 +211,8 @@ class OllamaProvider:
         if not self.base_url.startswith("http"):
             self.base_url = "http://" + self.base_url
         self.timeout = float(cfg.get("timeout_s", 900))
+        # Janela de contexto: o cache KV cresce com num_ctx; 8192 cabe em GPUs de 4-8 GB com modelos 7B (q4).
+        self.num_ctx = int(os.environ.get(cfg.get("num_ctx_env", "SCIFORGE_OLLAMA_NUM_CTX")) or cfg.get("num_ctx", 8192))
 
     async def generate(self, model: str, req: LLMRequest) -> LLMResponse:
         user_msg: dict[str, Any] = {"role": "user", "content": req.user}
@@ -206,7 +222,8 @@ class OllamaProvider:
             "model": model,
             "messages": [{"role": "system", "content": req.system}, user_msg],
             "stream": False,
-            "options": {"temperature": req.temperature, "num_predict": req.max_tokens, "num_ctx": 32768},
+            "options": {"temperature": req.temperature, "num_predict": min(req.max_tokens, self.num_ctx // 2),
+                        "num_ctx": self.num_ctx},
         }
         if req.json_mode:
             body["format"] = "json"
@@ -245,8 +262,11 @@ class AnthropicProvider:
             except ImportError as exc:  # dependência declarada em pyproject.toml
                 raise LLMError("Pacote `anthropic` ausente: pip install anthropic") from exc
             kwargs: dict[str, Any] = {"timeout": self.timeout, "max_retries": 4}
-            if os.environ.get(self.api_key_env):
-                kwargs["api_key"] = os.environ[self.api_key_env]
+            key = os.environ.get(self.api_key_env)
+            if not key and not os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+                raise LLMError(f"Provedor '{self.name}': defina {self.api_key_env} no .env (veja .env.example).")
+            if key:
+                kwargs["api_key"] = key
             if self.base_url:
                 kwargs["base_url"] = self.base_url
             self._client = anthropic.AsyncAnthropic(**kwargs)
@@ -405,7 +425,13 @@ class LLMClient:
             raise PrivacyViolation(
                 f"privacy_mode={self.privacy_mode}: chamada da {phase} exige provedor local, mas {origin} aponta "
                 f"para '{provider.name}'. Ajuste llm.roles.local (ou llm.phases.{phase}.local) em settings.yaml.")
-        return provider, spec["model"]
+        return provider, self.model_name(spec)
+
+    @staticmethod
+    def model_name(spec: dict) -> str:
+        """`model_env` permite trocar o modelo pelo .env (ex.: SCIFORGE_OLLAMA_MODEL=qwen2.5-coder:14b)."""
+        env = spec.get("model_env")
+        return (os.environ.get(env) if env else None) or spec["model"]
 
     def routing_table(self) -> dict[str, dict[str, str]]:
         """Resumo de qual provedor/modelo atende cada papel em cada fase (para `sciforge models`)."""

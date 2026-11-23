@@ -41,6 +41,7 @@ llm:
       host_env: OLLAMA_HOST
       base_url: http://localhost:11434
       timeout_s: 900
+      num_ctx: 8192               # contexto; suba para 16384-32768 se tiver ≥ 12 GB de VRAM (ou SCIFORGE_OLLAMA_NUM_CTX)
       local: true
 
   # Papéis globais (usados quando a fase não define o papel em `phases`).
@@ -51,8 +52,11 @@ llm:
     vision:       { provider: gemini, model: gemini-2.5-flash }
     writer:       { provider: claude, model: claude-opus-5-5 }
     reviewer:     { provider: openrouter, model: openai/gpt-4.1 }
-    local:        { provider: ollama, model: qwen2.5-coder:14b }
-    local_vision: { provider: ollama, model: qwen2.5vl:7b }
+    # Padrão leve para GPUs de 4-8 GB de VRAM. Troque pelo .env sem editar este arquivo:
+    #   SCIFORGE_OLLAMA_MODEL=qwen2.5-coder:14b        (≥ 12 GB)  ·  qwen2.5-coder:32b (≥ 24 GB)
+    #   SCIFORGE_OLLAMA_VISION_MODEL=qwen2.5vl:7b      (≥ 8 GB)
+    local:        { provider: ollama, model: "qwen2.5-coder:7b", model_env: SCIFORGE_OLLAMA_MODEL }
+    local_vision: { provider: ollama, model: "qwen2.5vl:3b", model_env: SCIFORGE_OLLAMA_VISION_MODEL }
 
   # Roteamento por fase (prioridade sobre `roles`). Ordem de resolução:
   #   phases.<fase>.<papel>  →  phases.<fase>."*"  →  roles.<papel>  →  roles.default

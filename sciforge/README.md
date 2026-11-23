@@ -81,12 +81,21 @@ prévias `.md`), marcada como prévia no relatório.
 
 ```bash
 # https://ollama.com/download
-ollama pull qwen2.5-coder:14b      # papel "local": escreve e corrige os scripts R da Fase 4
-ollama pull qwen2.5vl:7b           # papel "local_vision": QA visual das figuras na Fase 4
+ollama pull qwen2.5-coder:7b       # papel "local": escreve e corrige os scripts R da Fase 4
+ollama pull qwen2.5vl:3b           # papel "local_vision": QA visual das figuras na Fase 4
 ollama serve                       # OLLAMA_HOST=http://localhost:11434
 ```
 
-Troque os modelos em `config/settings.yaml → llm.roles`.
+O padrão é leve, pensado para GPUs de **4–8 GB de VRAM** (modelos 7B/3B quantizados, contexto 8192).
+Ajuste à sua placa pelo `.env`, sem editar o `settings.yaml`:
+
+| VRAM | `SCIFORGE_OLLAMA_MODEL` | `SCIFORGE_OLLAMA_VISION_MODEL` | `SCIFORGE_OLLAMA_NUM_CTX` |
+|---|---|---|---|
+| 4–8 GB | `qwen2.5-coder:7b` | `qwen2.5vl:3b` | 8192 |
+| 12 GB+ | `qwen2.5-coder:14b` | `qwen2.5vl:7b` | 16384 |
+| 24 GB+ | `qwen2.5-coder:32b` | `qwen2.5vl:7b` | 32768 |
+
+Modelos de 7B erram mais ao escrever R: espere usar mais das 4 tentativas de auto-correção da Fase 4.
 
 ### 1.5 Variáveis de ambiente (`.env`)
 
@@ -94,7 +103,8 @@ Troque os modelos em `config/settings.yaml → llm.roles`.
 |---|---|
 | `GEMINI_API_KEY` | Fases 1–2 e QA visual (padrão) |
 | `ANTHROPIC_API_KEY` | Claude (Fases 3, 5 e 6 no padrão), via SDK oficial `anthropic` |
-| `OPENROUTER_API_KEY` | Revisor #2 no padrão (`openai/gpt-4.1`); qualquer modelo do OpenRouter |
+| `OPENROUTER_API_KEY` (`OPENROUTER_BASE_URL` opcional) | Revisor #2 no padrão (`openai/gpt-4.1`); qualquer modelo do OpenRouter |
+| `SCIFORGE_OLLAMA_MODEL`, `SCIFORGE_OLLAMA_VISION_MODEL`, `SCIFORGE_OLLAMA_NUM_CTX` | modelos e contexto do Ollama (padrão leve para 4–8 GB) |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | provedor `openai` (qualquer endpoint OpenAI-compatível) |
 | `OLLAMA_HOST` | modelos locais |
 | `POLITE_EMAIL` | `User-Agent` com `mailto:` (polite pool OpenAlex/Crossref) |
