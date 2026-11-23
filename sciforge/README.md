@@ -77,24 +77,25 @@ quarto check
 Sem Quarto, o SciForge ainda gera uma **prévia `.docx` via Pandoc + citeproc** (tabelas a partir das
 prévias `.md`), marcada como prévia no relatório.
 
-### 1.4 Ollama (obrigatório para `privacy_mode: strict` ou `hybrid`)
+### 1.4 Onde roda cada coisa (padrão 100% nuvem)
+
+| Componente | Onde roda | Proteção |
+|---|---|---|
+| Leitura dos dados, profiling e toda a análise em R | **local**, sempre | `profile_data.R` só agrega (células < 5 suprimidas, identificadores omitidos); `static_check` bloqueia impressão de linhas; `sanitize_output` mascara PII nos logs |
+| Inferência de IA (todas as fases) | **nuvem**: Gemini, Claude, OpenRouter | os modelos recebem apenas agregados, código R, logs sanitizados e resultados |
+
+Nenhum modelo local é necessário. As proteções LGPD do R ficam ativas em qualquer `privacy_mode`.
+
+**Opcional: Ollama.** Se você precisar que nenhum texto saia da máquina, mude `privacy_mode` para
+`hybrid` (Fases 1 e 4 locais) ou `strict` (tudo local) e instale o [Ollama](https://ollama.com/download):
 
 ```bash
-# https://ollama.com/download
-ollama pull qwen2.5-coder:7b       # papel "local": escreve e corrige os scripts R da Fase 4
-ollama pull qwen2.5vl:3b           # papel "local_vision": QA visual das figuras na Fase 4
-ollama serve                       # OLLAMA_HOST=http://localhost:11434
+ollama pull qwen2.5-coder:7b       # papel "local": scripts R da Fase 4 (GPUs de 4-8 GB)
+ollama pull qwen2.5vl:3b           # papel "local_vision": QA visual das figuras
 ```
 
-O padrão é leve, pensado para GPUs de **4–8 GB de VRAM** (modelos 7B/3B quantizados, contexto 8192).
-Ajuste à sua placa pelo `.env`, sem editar o `settings.yaml`:
-
-| VRAM | `SCIFORGE_OLLAMA_MODEL` | `SCIFORGE_OLLAMA_VISION_MODEL` | `SCIFORGE_OLLAMA_NUM_CTX` |
-|---|---|---|---|
-| 4–8 GB | `qwen2.5-coder:7b` | `qwen2.5vl:3b` | 8192 |
-| 12 GB+ | `qwen2.5-coder:14b` | `qwen2.5vl:7b` | 16384 |
-| 24 GB+ | `qwen2.5-coder:32b` | `qwen2.5vl:7b` | 32768 |
-
+Ajuste modelos e contexto pelo `.env` (`SCIFORGE_OLLAMA_MODEL`, `SCIFORGE_OLLAMA_VISION_MODEL`,
+`SCIFORGE_OLLAMA_NUM_CTX`): 12 GB+ → `qwen2.5-coder:14b` + `qwen2.5vl:7b`; 24 GB+ → `qwen2.5-coder:32b`.
 Modelos de 7B erram mais ao escrever R: espere usar mais das 4 tentativas de auto-correção da Fase 4.
 
 ### 1.5 Variáveis de ambiente (`.env`)
@@ -102,13 +103,12 @@ Modelos de 7B erram mais ao escrever R: espere usar mais das 4 tentativas de aut
 | Variável | Uso |
 |---|---|
 | `GEMINI_API_KEY` | Fases 1–2 e QA visual (padrão) |
-| `ANTHROPIC_API_KEY` | Claude (Fases 3, 5 e 6 no padrão), via SDK oficial `anthropic` |
+| `ANTHROPIC_API_KEY` | Claude (Fases 3, 4, 5 e 6 no padrão), via SDK oficial `anthropic` |
 | `OPENROUTER_API_KEY` (`OPENROUTER_BASE_URL` opcional) | Revisor #2 no padrão (`openai/gpt-4.1`); qualquer modelo do OpenRouter |
-| `SCIFORGE_OLLAMA_MODEL`, `SCIFORGE_OLLAMA_VISION_MODEL`, `SCIFORGE_OLLAMA_NUM_CTX` | modelos e contexto do Ollama (padrão leve para 4–8 GB) |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | provedor `openai` (qualquer endpoint OpenAI-compatível) |
-| `OLLAMA_HOST` | modelos locais |
+| `OLLAMA_HOST`, `SCIFORGE_OLLAMA_*` | opcionais; só em `privacy_mode` `hybrid`/`strict` |
 | `POLITE_EMAIL` | `User-Agent` com `mailto:` (polite pool OpenAlex/Crossref) |
-| `SEMANTIC_SCHOLAR_API_KEY` | opcional; sem ela a Semantic Scholar costuma responder 429 e o enxame segue com as outras fontes |
+| `SEMANTIC_SCHOLAR_API_KEY` | opcional; enviada no header `x-api-key`. Sem ela a Semantic Scholar costuma responder 429 e o enxame segue com as outras fontes. Acima de 100 resultados (ou com `literature.semantic_scholar_bulk: true`) usa `/paper/search/bulk` |
 
 ---
 
@@ -168,7 +168,7 @@ citado), `estilo_alvo.csl`, `tabelas/` (`.rds` + `.html`/`.md`), `figuras/` (PNG
 | **2. Evidence Ledger** | `phase2_research_swarm._build_ledger` ficha cada artigo (resumo ou texto completo OA do EuropePMC) em `02_evidence_ledger.json`; `integrity_checks.citation_audit` confere cada `[@citekey]` contra `.bib`, ledger, status de retratação e **suporte** (sobreposição lexical + juiz LLM). |
 | **3. Contrato de diagnósticos** | `schemas.ResultadosVerificados` / `FluxoAmostral` (perda silenciosa → erro), helpers R `sf_flow_*`, `sf_diag_glm`, `sf_tidy_model`; `phase4_analyst.validate_results` bloqueia o Portão #2 em caso de não convergência, Poisson superdisperso ou perda > limite sem justificativa. |
 | **4. Tabelas determinísticas** | `04_tabelas_figuras.R` + `sf_save_table` → `.rds`; `quarto_renderer.table_chunk` insere chunks que só fazem `readRDS()`; o redator usa marcadores `{{tbl-...}}` e cita `@tbl-...`. |
-| **5. Sandbox e LGPD** | `r_sandbox.static_check` bloqueia `head/tail/View/glimpse/print(df)`, auto-print, `system`, downloads e escrita em `00_semente`; `sanitize_output` mascara CPF, CNS, datas, e-mails, telefones e números longos; `LLMClient.resolve` força Ollama nas Fases 1 e 4 (`hybrid`) ou em tudo (`strict`) e levanta `PrivacyViolation` se o papel local apontar para a nuvem; `profile_data.R` suprime células < 5 e omite identificadores. |
+| **5. Sandbox e LGPD** | `r_sandbox.static_check` bloqueia `head/tail/View/glimpse/print(df)`, auto-print, `system`, downloads e escrita em `00_semente`; `sanitize_output` mascara CPF, CNS, datas, e-mails, telefones e números longos; `profile_data.R` suprime células < 5 e omite identificadores — tudo isso **sempre ativo, inclusive em `cloud`**. Opcionalmente, `LLMClient.resolve` força Ollama nas Fases 1 e 4 (`hybrid`) ou em tudo (`strict`) e levanta `PrivacyViolation` se o papel local apontar para a nuvem. |
 | **6. QA visual** | `sf_save_figure` (300 DPI PNG + PDF + SVG, `sf_theme`, Okabe-Ito/viridis); `visual_inspector.deterministic_checks` (DPI via chunk pHYs, largura, versão vetorial) + inspeção multimodal com `04b_figure_qa.md`; até 2 ciclos de regeneração por figura. |
 | **7. Quarto + CSL + Kit** | `quarto_renderer.build_qmd` (YAML com `bibliography`, `csl`, `crossref`, `reference-doc`), `ensure_csl` (Vancouver/ABNT locais + download pelo nome), `render`/`render_project`, checklist com locais validados contra os parágrafos reais, carta ao editor e relatório de auditoria. |
 | **8. Custo e checkpoints** | `budget_guard.BudgetGuard` (tokens/custo/chamadas por fase, teto global, 4 correções R, 2 ciclos de QA, 2 rodadas de revisão); `state_manager.StateManager` (SQLite: fases, etapas, seções, uso, tentativas, portões); cada seção da Fase 6 é um checkpoint. |
@@ -180,10 +180,10 @@ citado), `estilo_alvo.csl`, `tabelas/` (`.rds` + `.html`/`.md`), `figuras/` (PNG
 
 | Fase | Modelo principal | Observações |
 |---|---|---|
-| 1 Intake | Gemini 2.5 Pro (visão: Gemini 2.5 Flash) | em `hybrid`/`strict` vai para o Ollama |
+| 1 Intake | Gemini 2.5 Pro (visão: Gemini 2.5 Flash) | profiling dos dados em R local |
 | 2 Enxame | Gemini 2.5 Pro (fichamento: Flash) | |
 | 3 Arquiteto | Claude Opus 5.5 | Revisor #2 via OpenRouter (`openai/gpt-4.1`), outra família de modelo |
-| 4 Análise | Claude Opus 5.5 / QA visual Gemini (só em `cloud`) | em `hybrid`/`strict` tudo no Ollama |
+| 4 Análise | Claude Opus 5.5 (papel `analyst`) / QA visual Gemini 2.5 Flash | o R executa localmente no sandbox |
 | 5 Storyboard | Claude Opus 5.5 | |
 | 6 Redação | Claude Opus 5.5 | juiz de citações/checklist: Gemini Flash; Revisor #2 via OpenRouter |
 
@@ -204,11 +204,13 @@ preços de `llm.pricing` (modelos via OpenRouter usam o slug como chave).
 
 ### `privacy_mode`
 
+Define apenas onde roda a inferência de IA; o R e as proteções LGPD rodam localmente em todos os modos.
+
 | Modo | Fase 1 e Fase 4 | Demais fases |
 |---|---|---|
-| `strict` | Ollama | Ollama |
-| `hybrid` (padrão) | Ollama | nuvem, apenas com dados agregados (inventário, `04_resultados_verificados.json`) |
-| `cloud` | nuvem | nuvem (use apenas com dados públicos ou anonimizados) |
+| `cloud` (padrão) | nuvem (recebe só agregados e logs sanitizados) | nuvem |
+| `hybrid` (opcional) | Ollama | nuvem |
+| `strict` (opcional) | Ollama | Ollama |
 
 ---
 
@@ -343,5 +345,5 @@ modelos reais configurados.
 
 - O suporte de citações combina heurística lexical com juiz LLM; alegações sutis ainda exigem leitura humana no Portão #3.
 - Os checklists em `config/checklists/` são paráfrases; confira o texto oficial antes da submissão.
-- A Fase 4 depende da capacidade do modelo local de escrever R correto; o sandbox limita a 4 correções por script e então bloqueia com o log sanitizado para intervenção humana.
+- A Fase 4 depende da capacidade do modelo de escrever R correto; o sandbox limita a 4 correções por script e então bloqueia com o log sanitizado para intervenção humana.
 - `vancouver.csl` é uma cópia de `elsevier-vancouver.csl`, porque o repositório oficial não tem mais um `vancouver.csl` na raiz.

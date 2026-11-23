@@ -1,8 +1,10 @@
 """Fase 4 — Bioestatístico R: renv + scripts modulares + Contrato de Diagnósticos + QA Visual.
 
-Privacidade (Trava 5): em strict/hybrid TODAS as chamadas desta fase vão ao modelo local (Ollama);
-logs de execução passam pelo sanitizador LGPD antes de voltar ao modelo; o código gerado passa por
-análise estática que bloqueia impressão de registros individuais.
+Privacidade (Trava 5): o R roda SEMPRE localmente, em qualquer privacy_mode. O modelo de linguagem
+(papel `analyst`: Claude em nuvem no padrão `cloud`; Ollama apenas se o usuário optar por strict/hybrid)
+nunca vê linhas dos dados: recebe o perfil agregado com supressão de células < 5, o código gerado passa
+por análise estática que bloqueia a impressão de registros individuais, e todo log de execução passa
+pelo sanitizador LGPD antes de voltar ao modelo.
 
 Scripts gerados em 02_analise/:
   00_setup.R, 01_prep_dados.R, 02_modelos_principais.R, 03_sensibilidade.R, 04_tabelas_figuras.R
@@ -78,6 +80,8 @@ def validate_results(path: Path, max_loss: float) -> tuple[Optional[ResultadosVe
         if d.superdispersao and (d.familia or "").lower() == "poisson":
             problems.append(f"Modelo '{d.modelo}' Poisson com superdispersão (φ={d.dispersao}); use quasipoisson/binomial negativa")
     fluxo = res.fluxo_amostral
+    if fluxo.n_inicial <= 0:
+        return res, problems + [f"Fluxo amostral com n_inicial={fluxo.n_inicial}: impossível calcular a perda amostral"]
     perda = 1 - fluxo.n_final / fluxo.n_inicial
     if perda > max_loss:
         sem_just = [e.criterio for e in fluxo.exclusoes if not (e.justificativa or "").strip()]
@@ -168,7 +172,7 @@ class Phase4Analyst(PhaseAgent):
                 f"ESCREVA AGORA: 02_analise/{name}\nFINALIDADE: {purpose}\n"
                 "Responda apenas com um bloco ```r``` contendo o script completo e executável.")
         text = await self.ctx.llm.complete(system=self.ctx.prompt("04_r_biostatistician"), user=user,
-                                           phase=self.phase, role="local", sensitive=True)
+                                           phase=self.phase, role="analyst", sensitive=True)
         code = extract_code_block(text, "r")
         violations = static_check(code)
         if violations:
@@ -176,7 +180,7 @@ class Phase4Analyst(PhaseAgent):
                 system=self.ctx.prompt("04_r_biostatistician"),
                 user=("O script abaixo viola as regras de privacidade do sandbox:\n" +
                       "\n".join(f"- {v}" for v in violations) + f"\n\n```r\n{code}```\nCorrija e devolva o script completo."),
-                phase=self.phase, role="local", sensitive=True)
+                phase=self.phase, role="analyst", sensitive=True)
             code = extract_code_block(text, "r")
         return code
 
@@ -187,7 +191,7 @@ class Phase4Analyst(PhaseAgent):
                     f"RESULTADO DA EXECUÇÃO (logs já sanitizados):\n{feedback}\n\n"
                     "Diagnostique a causa raiz e devolva o script COMPLETO corrigido em um bloco ```r```.")
             text = await self.ctx.llm.complete(system=self.ctx.prompt("04_r_biostatistician"), user=user,
-                                               phase=self.phase, role="local", sensitive=True)
+                                               phase=self.phase, role="analyst", sensitive=True)
             return extract_code_block(text, "r")
         return fix
 
@@ -242,7 +246,7 @@ class Phase4Analyst(PhaseAgent):
                           + "\n".join(f"- {i}" for i in qa.instrucoes_correcao)
                           + f"\n\nScript atual:\n```r\n{script.read_text(encoding='utf-8')}```\n"
                           "Devolva o script 04_tabelas_figuras.R completo (as demais saídas devem permanecer idênticas)."),
-                    phase=self.phase, role="local", sensitive=True)
+                    phase=self.phase, role="analyst", sensitive=True)
                 script.write_text(extract_code_block(text, "r"), encoding="utf-8")
                 run = await sandbox.run_with_autofix(script, self._fixer("04_tabelas_figuras.R", "regenerar figura", base_ctx),
                                                      budget=self.ctx.budget)

@@ -75,7 +75,9 @@ def deterministic_checks(png: Path, min_dpi: int = 300, min_px: int = 1200) -> l
 
 async def inspect_figure(png: Path, llm: LLMClient | None, phase: str = "phase4", caption: str | None = None,
                          min_dpi: int = 300) -> FigureQA:
-    """QA completo de uma figura. Em privacy_mode strict/hybrid a Fase 4 usa modelo de visão local."""
+    """QA completo de uma figura (papel `vision`: Gemini em nuvem no padrão; local só em hybrid/strict).
+
+    Recebe apenas o PNG gerado pela Fase 4 (gráfico agregado), nunca dados individuais."""
     det = deterministic_checks(png, min_dpi=min_dpi)
     if llm is None:
         return FigureQA(aprovado=not det, problemas=det,

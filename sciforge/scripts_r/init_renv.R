@@ -17,6 +17,12 @@ pkgs <- if (length(args) >= 2 && nzchar(args[[2]])) strsplit(args[[2]], ",")[[1]
   c("tidyverse", "gtsummary", "gt", "flextable", "ggplot2", "jsonlite", "broom")
 pkgs <- unique(trimws(pkgs))
 
+# Bibliotecas existentes ANTES de qualquer chamada ao renv: inclui R_LIBS_USER (no Windows,
+# %LOCALAPPDATA%/R/win-library/x.y), a site-library e a biblioteca base. Depois de renv::load()
+# o .libPaths() passa a apontar só para a biblioteca do projeto e esses pacotes "sumiriam".
+sys_libs <- unique(c(.libPaths(), Sys.getenv("R_LIBS_USER", unset = ""), .Library.site, .Library))
+sys_libs <- sys_libs[nzchar(sys_libs) & dir.exists(sys_libs)]
+
 status <- list(diretorio = proj, renv = FALSE, instalados = list(), faltantes = list(), mensagens = list())
 msg <- function(...) { m <- sprintf(...); cat(m, "\n"); status$mensagens[[length(status$mensagens) + 1]] <<- m }
 
@@ -40,9 +46,8 @@ if (requireNamespace("renv", quietly = TRUE)) {
   if (isTRUE(status$renv)) {
     # Carrega a biblioteca do projeto, mas permite usar pacotes do sistema como cache.
     try(renv::load(proj, quiet = TRUE), silent = TRUE)
-    lib_sys <- .Library.site
     for (p in pkgs) {
-      present <- requireNamespace(p, quietly = TRUE, lib.loc = c(.libPaths(), lib_sys))
+      present <- nzchar(system.file(package = p, lib.loc = unique(c(.libPaths(), sys_libs))))
       if (!present) {
         try(renv::install(p, prompt = FALSE), silent = TRUE)
         present <- requireNamespace(p, quietly = TRUE)

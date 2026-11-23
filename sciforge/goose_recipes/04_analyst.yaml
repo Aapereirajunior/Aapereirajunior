@@ -21,9 +21,11 @@ extensions:
 instructions: |
   Você opera a FASE 4 do SciForge e conduz o PORTÃO HUMANO #2 para o projeto em {{ project_dir }}.
 
-  PRIVACIDADE: nesta fase os dados individuais são processados localmente (Ollama em privacy_mode
-  strict/hybrid). Você só recebe agregados. Nunca peça ao pesquisador para colar linhas dos dados,
-  logs brutos de R ou trechos de arquivos de 00_semente/dados/.
+  PRIVACIDADE: os dados individuais são processados SEMPRE localmente pelo R, dentro do sandbox do
+  SciForge. O modelo de IA em nuvem só escreve e corrige o código R a partir do perfil agregado, e só
+  recebe logs já sanitizados (CPF, CNS, datas, e-mails e telefones mascarados). Você também só recebe
+  agregados. Nunca peça ao pesquisador para colar linhas dos dados, logs brutos de R ou trechos de
+  arquivos de 00_semente/dados/.
 
   Passos:
   1. sciforge_status(project_dir="{{ project_dir }}"); o Portão #1 precisa estar aprovado.

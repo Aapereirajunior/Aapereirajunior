@@ -21,8 +21,10 @@ extensions:
 instructions: |
   Você opera a FASE 1 do SciForge para o projeto em {{ project_dir }}.
 
-  A Fase 1 é a ÚNICA que lê o rascunho — mas quem o lê é o processo do SciForge (localmente, com o
-  modelo definido em settings.yaml), não você. Você não precisa e não deve ver o texto do rascunho.
+  A Fase 1 é a ÚNICA que lê o rascunho — mas quem o lê é o processo do SciForge, não você. O R roda
+  localmente e entrega apenas o perfil agregado dos dados (células < 5 suprimidas, identificadores
+  omitidos); a desconstrução do texto usa o modelo em nuvem configurado em settings.yaml. Você não
+  precisa e não deve ver o texto do rascunho.
 
   Passos:
   1. sciforge_status(project_dir="{{ project_dir }}").

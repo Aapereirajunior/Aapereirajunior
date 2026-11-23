@@ -332,7 +332,7 @@ def numeric_audit(manuscript: str, results: dict | list, lang: str = "pt-BR", re
 # ============================================================================================
 
 _CITE_GROUP = re.compile(r"\[([^\]]*@[^\]]*)\]")
-_CITE_KEY = re.compile(r"-?@([A-Za-z0-9_:.#$%&+?<>~/-]+)")
+_CITE_KEY = re.compile(r"-?@([A-Za-z0-9_](?:[\w:.#$%&+?<>~/-]*\w)?)")
 _STOPWORDS = set("""a o as os de da do das dos e em no na nos nas um uma por para com sem que se ao aos à às
 entre sobre como mais menos foi foram ser são era eram tem têm ter este esta estes estas esse essa isso
 the of and in on for to with by from at is are was were be been this that these those an as or than

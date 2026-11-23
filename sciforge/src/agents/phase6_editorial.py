@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 from ..core.budget_guard import AttemptLimitReached
@@ -231,7 +232,7 @@ class Phase6Editorial(PhaseAgent):
     def _assemble(self, sections: dict[str, str], report: AuditReport) -> dict[str, Path]:
         ws = self.ctx.ws
         meta = json.loads(sections["Titulo_Resumo"])
-        cited = set(re.findall(r"@([A-Za-z0-9_:.-]+)", "\n".join(sections.values()))) & self.bib_keys
+        cited = set(CITE_KEY_RE.findall("\n".join(sections.values()))) & self.bib_keys
         ws.entrega.mkdir(parents=True, exist_ok=True)
         (ws.entrega / "referencias.bib").write_text(filter_bib(self.bib_text, cited), encoding="utf-8")
         rules = parse_journal_rules(self.ctx.journal_rules_text())
@@ -285,7 +286,7 @@ class Phase6Editorial(PhaseAgent):
         for it in items:
             m = by_item.get(it["item"], {})
             locs = [loc.strip() for loc in str(m.get("local") or "").split(";") if loc.strip()]
-            locs_ok = [loc for loc in locs if loc in valid_ids or loc.lower().startswith("não se aplica")]
+            locs_ok = [loc for loc in locs if loc in valid_ids or _is_not_applicable(loc)]
             status = m.get("status", "ausente")
             if locs and not locs_ok:
                 status = "verificar (local inválido)"
@@ -313,17 +314,31 @@ def _strip_fences(text: str) -> str:
     return m.group(1).strip() if m else t
 
 
-def _anchors(text: str) -> tuple[set[str], set[str], set[str]]:
-    nums = set(re.findall(r"\d+(?:[.,]\d+)?", ic.strip_citations(text)))
-    cites = set(re.findall(r"@[\w:.-]+", text))
-    marks = set(re.findall(r"\{\{\s*(?:tbl|fig)-[\w-]+\s*\}\}", text))
+# Citekey Pandoc: começa e termina em caractere de palavra; pontuação interna (:.#$%&+?<>~/-) é permitida,
+# mas a pontuação final colada em citações narrativas ("@silva2020.", "@silva2020,") não faz parte da chave.
+CITE_KEY_RE = re.compile(r"(?<![\w.@])@([A-Za-z0-9_](?:[\w:.#$%&+?<>~/-]*\w)?)")
+NOT_APPLICABLE = ("não se aplica", "nao se aplica", "not applicable", "n/a", "na")
+
+
+def _is_not_applicable(loc: str) -> bool:
+    low = loc.strip().lower().rstrip(".")
+    return any(low == na or low.startswith(na + " ") or low.startswith(na + "(") for na in NOT_APPLICABLE)
+
+
+def _anchors(text: str) -> tuple[Counter, Counter, Counter]:
+    """Números, citações e marcadores com multiplicidade (um número repetido conta duas vezes)."""
+    cites = Counter(CITE_KEY_RE.findall(text))
+    without_refs = CITE_KEY_RE.sub(" ", ic.strip_citations(text))
+    marks = Counter(re.sub(r"\s+", "", m) for m in re.findall(r"\{\{\s*(?:tbl|fig)-[\w-]+\s*\}\}", text))
+    without_marks = re.sub(r"\{\{\s*(?:tbl|fig)-[\w-]+\s*\}\}", " ", without_refs)
+    nums = Counter(re.findall(r"\d+(?:[.,]\d+)?", without_marks))
     return nums, cites, marks
 
 
 def _same_anchors(before: str, after: str) -> bool:
-    """O Humanizador só pode mexer no estilo: números, citações e marcadores devem ser preservados."""
-    b, a = _anchors(before), _anchors(after)
-    return b[1] == a[1] and b[2] == a[2] and a[0] <= b[0]
+    """O Humanizador só pode mexer no estilo: números, citações e marcadores devem ser idênticos,
+    inclusive na quantidade de ocorrências (remover um IC 95% ou um p-valor invalida a versão)."""
+    return _anchors(before) == _anchors(after)
 
 
 def _section_text(sid: str, text: str) -> str:

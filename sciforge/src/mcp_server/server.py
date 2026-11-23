@@ -36,12 +36,12 @@ try:  # SDK MCP 1.x
 except ImportError:  # SDK MCP 2.x renomeou FastMCP para MCPServer (mesma API de decorators)
     from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore[no-redef]
 
-from ..core.config import TEMPLATE_DIR, Workspace
+from ..core.config import TEMPLATE_DIR, Workspace, load_settings
 from ..core.schemas import EvidenceLedger
 from ..core.state_manager import GATES, StateManager
 from ..tools import integrity_checks as ic
 from ..tools.data_profiler import profile_dataset
-from ..tools.literature_swarm import LiteratureSwarm, parse_bib_keys, rank_papers
+from ..tools.literature_swarm import LiteratureSwarm, SwarmConfig, parse_bib_keys, rank_papers
 from ..tools.quarto_renderer import collect_objects, ensure_csl, render_project
 
 logger = logging.getLogger("sciforge.mcp")
@@ -91,6 +91,11 @@ def _json(data: Any) -> str:
 mcp = FastMCP("sciforge")
 
 
+def _swarm_config() -> SwarmConfig:
+    """Respeita settings.yaml (rate limits, bulk) e o .env (POLITE_EMAIL, SEMANTIC_SCHOLAR_API_KEY)."""
+    return SwarmConfig.from_settings(load_settings())
+
+
 # =============================================================================================
 # Auditoria (compartilhada com a CLI)
 # =============================================================================================
@@ -132,7 +137,7 @@ async def audit_manuscript(qmd_path: Path, results_json_path: Path, evidence_led
 @stdout_guard
 async def search_literature_swarm(query: str, years_back: int = 5, max_results: int = 20) -> str:
     """Busca paralela em OpenAlex, EuropePMC, Crossref e Semantic Scholar; retorna artigos deduplicados por DOI."""
-    async with LiteratureSwarm() as swarm:
+    async with LiteratureSwarm(_swarm_config()) as swarm:
         papers, errors = await swarm.search_all(query, years_back=years_back, max_results=max_results)
     ranked = rank_papers(papers)[: max_results * 2]
     return _json({"total": len(papers), "erros": errors,
@@ -153,7 +158,7 @@ def profile_r_dataset(file_path: str) -> str:
 @stdout_guard
 async def verify_doi_and_retraction(doi_or_title: str) -> str:
     """Confere existência de um DOI (ou título) no Crossref/OpenAlex e seu status de retratação/correção."""
-    async with LiteratureSwarm() as swarm:
+    async with LiteratureSwarm(_swarm_config()) as swarm:
         info = await swarm.verify_reference(doi_or_title)
     return _json(info)
 

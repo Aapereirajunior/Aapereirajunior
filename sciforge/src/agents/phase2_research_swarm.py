@@ -49,6 +49,19 @@ class Phase2ResearchSwarm(PhaseAgent):
             raw = await self.cached_step("busca", lambda: self._run_agents(swarm, inv, queries, lit))
             papers = [Paper.model_validate(p) for p in raw["papers"]]
             seed_audit = raw["auditoria_semente"]
+            seed_dois = {r.get("doi") for r in seed_audit
+                         if r.get("existe") and r.get("doi") and r.get("status_retratacao") == "ok"}
+            # Referências-semente vindas só do Crossref costumam chegar sem resumo: enriquece pelo DOI
+            # (OpenAlex → EuropePMC → Semantic Scholar) ANTES do ranking e do fichamento.
+            enrich = await self.cached_step("enriquecimento_semente",
+                                            lambda: self._enrich_seed_abstracts(swarm, papers, seed_dois))
+            for p in papers:
+                info = enrich.get(p.doi or "")
+                if info:
+                    p.resumo = p.resumo or info.get("resumo")
+                    p.pmcid = p.pmcid or info.get("pmcid")
+                    p.pmid = p.pmid or info.get("pmid")
+                    p.open_access = p.open_access or bool(info.get("open_access"))
 
             ranked = rank_papers(papers)
             pool = [p for p in ranked if p.resumo and not p.retratado][: int(lit.get("final_pool_max", 60))]
@@ -65,7 +78,8 @@ class Phase2ResearchSwarm(PhaseAgent):
             if lit.get("fetch_open_access_fulltext", True):
                 fulltexts = await self.cached_step("textos_oa", lambda: self._fetch_fulltexts(swarm, pool))
 
-        ledger = await self._build_ledger(pool, statuses, fulltexts)
+        seed_keys = {p.citekey for p in pool if p.doi in seed_dois}
+        ledger = await self._build_ledger(pool, statuses, fulltexts, keep=seed_keys)
         self.ctx.write_json(self.ctx.ws.evidence_ledger, ledger)
         valid_keys = {e.citekey for e in ledger.entradas if e.status_retratacao not in ("retratado",)}
         final_pool = [p for p in pool if p.citekey in valid_keys]
@@ -78,6 +92,8 @@ class Phase2ResearchSwarm(PhaseAgent):
         sota = await self.cached_step("estado_da_arte", lambda: self._synthesize(inv, ledger, seed_audit, raw["erros"]))
         self.ctx.write_text(self.ctx.ws.estado_da_arte, sota, encoding="utf-8")
         return {"artigos_coletados": len(papers), "pool_final": len(final_pool),
+                "semente_enriquecida": sum(1 for v in enrich.values() if v.get("resumo")),
+                "semente_no_pool": len(seed_keys & {p.citekey for p in final_pool}),
                 "fichamentos": len(ledger.entradas), "erros_fontes": raw["erros"],
                 "referencias_semente_auditadas": len(seed_audit)}
 
@@ -141,6 +157,22 @@ class Phase2ResearchSwarm(PhaseAgent):
         merged = deduplicate(all_papers)
         return {"papers": [p.model_dump() for p in merged], "auditoria_semente": seed, "erros": errors}
 
+    async def _enrich_seed_abstracts(self, swarm: LiteratureSwarm, papers: list[Paper],
+                                     seed_dois: set[str]) -> dict[str, dict]:
+        sem = asyncio.Semaphore(4)
+        targets = [p for p in papers if p.doi in seed_dois and not p.resumo]
+
+        async def one(p: Paper) -> tuple[str, dict]:
+            async with sem:
+                try:
+                    return p.doi or "", await swarm.enrich_by_doi(p.doi or "")
+                except Exception as exc:  # noqa: BLE001 — sem resumo, a referência segue só com metadados
+                    return p.doi or "", {"resumo": None, "erro": str(exc)}
+        result = dict(await asyncio.gather(*(one(p) for p in targets)))
+        found = sum(1 for v in result.values() if v.get("resumo"))
+        self.ctx.log(f"  • referências-semente enriquecidas pelo DOI: {found}/{len(targets)}")
+        return result
+
     async def _check_retractions(self, swarm: LiteratureSwarm, pool: list[Paper]) -> dict[str, str]:
         sem = asyncio.Semaphore(8)
 
@@ -167,7 +199,10 @@ class Phase2ResearchSwarm(PhaseAgent):
         return {k: v for k, v in pairs if v}
 
     async def _build_ledger(self, pool: list[Paper], statuses: dict[str, str],
-                            fulltexts: dict[str, str]) -> EvidenceLedger:
+                            fulltexts: dict[str, str], keep: set[str] | None = None) -> EvidenceLedger:
+        """Fichamento em lotes. Entradas sem achados são descartadas, EXCETO referências-semente válidas
+        (`keep`): elas ficam no ledger com fonte "metadados" para não sumirem do referencias_pool.bib."""
+        keep = keep or set()
         entries: list[EvidenceEntry] = []
         batch_size = 6
         system = self.ctx.prompt("02b_evidence_extractor")
@@ -201,7 +236,8 @@ class Phase2ResearchSwarm(PhaseAgent):
                     status_retratacao=statuses.get(p.citekey or "", "retratado" if p.retratado else "nao_verificado"),
                     fonte_texto="texto_completo_oa" if p.citekey in fulltexts else ("resumo" if p.resumo else "metadados"),
                 ))
-        return EvidenceLedger(entradas=[e for e in entries if e.achados_principais])
+        return EvidenceLedger(entradas=[e for e in entries
+                                        if e.achados_principais or (e.citekey in keep and e.status_retratacao != "retratado")])
 
     async def _synthesize(self, inv: InventarioSemente, ledger: EvidenceLedger, seed_audit: list[dict],
                           errors: dict[str, str]) -> str:

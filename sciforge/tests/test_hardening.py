@@ -531,3 +531,310 @@ def test_native_key_defaults_for_anthropic_openrouter_and_ollama(monkeypatch):
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
     for var in ("ANTHROPIC_API_KEY=", "OPENROUTER_API_KEY=", "SCIFORGE_OLLAMA_MODEL=qwen2.5-coder:7b"):
         assert var in env_example
+
+
+# =============================================================================================
+# 7. Rodada final: modo nuvem, âncoras do Humanizador, citações narrativas, checklist EN, S2
+# =============================================================================================
+
+def test_default_settings_are_cloud_and_route_every_phase_to_cloud():
+    s = load_settings()
+    assert s["privacy_mode"] == "cloud"
+    client = LLMClient(s)
+    for phase in ("phase1", "phase2", "phase3", "phase4", "phase5", "phase6"):
+        for role in ("default", "fast", "vision", "writer", "analyst", "reviewer"):
+            provider, _ = client.resolve(role, phase, sensitive=True, vision=role == "vision")
+            assert not getattr(provider, "local", False), (phase, role, provider.name)
+    assert client.resolve("analyst", "phase4", True, False)[0].name == "claude"
+    assert client.resolve("vision", "phase4", True, True)[0].name == "gemini"
+    assert client.resolve("default", "phase1", True, False)[0].name == "gemini"
+
+
+class _TrackingProvider(FakeProvider):
+    """Provedor 'em nuvem' (local=False) que registra os papéis/modelos usados."""
+    local = False
+
+
+@pytest.mark.skipif(not HAS_R, reason="Rscript não instalado")
+def test_phase4_cloud_mode_never_calls_ollama_and_lgpd_guards_stay_on(workspace, monkeypatch):
+    from test_pipeline_components import FakeR, _seed_downstream_artifacts
+    from sciforge.agents.base import PhaseContext
+    from sciforge.agents.phase4_analyst import Phase4Analyst
+    from sciforge.core.llm_client import OllamaProvider
+    from sciforge.tools import r_sandbox
+
+    async def no_ollama(self, model, req):
+        raise AssertionError("Ollama não pode ser chamado em privacy_mode: cloud")
+    monkeypatch.setattr(OllamaProvider, "generate", no_ollama)
+
+    _seed_downstream_artifacts(workspace)
+    for sub in ("tabelas", "figuras"):
+        for f in (workspace / "03_entrega" / sub).glob("*"):
+            f.unlink()
+    (workspace / "01_estado" / "01_inventario_semente.json").write_text(
+        json.dumps({"ideia_nucleo": "PM2.5 e internação."}), encoding="utf-8")
+
+    class CloudR(FakeR):
+        local = False
+        first = True
+
+        def _answer(self, system, user):
+            # 1ª versão do 01_prep_dados.R tenta imprimir linhas: o static_check deve barrar mesmo em cloud.
+            if "Bioestatístico" in system and "ESCREVA AGORA: 02_analise/01_prep_dados.R" in user and CloudR.first:
+                CloudR.first = False
+                return "```r\ndados <- read.csv('x.csv')\nhead(dados)\n```"
+            if "Bioestatístico" in system and "viola as regras de privacidade" in user:
+                from test_pipeline_components import PHASE4_SCRIPTS
+                return f"```r\n{PHASE4_SCRIPTS['01_prep_dados.R']}```"
+            return super()._answer(system, user)
+
+    sanitized: list[str] = []
+    real_sanitize = r_sandbox.sanitize_output
+    monkeypatch.setattr(r_sandbox, "sanitize_output", lambda t: sanitized.append(t) or real_sanitize(t))
+
+    extra = {"analysis": {"use_renv": False}}
+    settings = load_settings(workspace, extra)                     # privacy_mode padrão: cloud
+    assert settings["privacy_mode"] == "cloud"
+    cloud = CloudR()
+    roles = {r: {"provider": "nuvem", "model": f"cloud-{r}"} for r in ("default", "analyst", "vision", "fast", "writer", "reviewer")}
+    settings["llm"]["roles"].update(roles)
+    settings["llm"]["phases"] = {"phase4": {"analyst": roles["analyst"], "vision": roles["vision"], "*": roles["default"]}}
+    providers = {"nuvem": cloud, "ollama": OllamaProvider("ollama", {})}
+    client = LLMClient(settings, providers=providers)
+    ctx = PhaseContext.create(workspace, settings_extra=extra, llm=client, log=lambda m: None)
+    ctx.llm.settings = settings
+    out = asyncio.run(Phase4Analyst(ctx).execute())
+    assert out["tabelas"] == ["tbl-caracteristicas"]
+    bio_calls = [u for s, u in cloud.calls if "Bioestatístico" in s]
+    assert bio_calls and any("viola as regras de privacidade" in u for _, u in cloud.calls)
+    assert sanitized, "logs do R devem passar pelo sanitizador LGPD também no modo cloud"
+    # o código final não contém o head(dados) bloqueado
+    assert "head(dados)" not in (workspace / "02_analise" / "01_prep_dados.R").read_text(encoding="utf-8")
+
+
+def test_profile_data_r_suppression_is_independent_of_privacy_mode():
+    """profile_data.R não conhece privacy_mode: a supressão < 5 e a omissão de identificadores são fixas."""
+    script = (ROOT / "scripts_r" / "profile_data.R").read_text(encoding="utf-8")
+    assert "privacy" not in script.lower()
+    assert "min_cell" in script and "possivel_identificador" in script
+    src = (SRC / "tools" / "r_sandbox.py").read_text(encoding="utf-8")
+    assert "privacy" not in src.lower()   # static_check e sanitize_output não dependem do modo
+
+
+def test_humanizer_cannot_drop_numbers_ci_or_p_values():
+    from sciforge.agents.phase6_editorial import _same_anchors
+    before = ("O risco foi maior (OR 1,57; IC 95% 1,12-2,20; p = 0,009) e manteve-se na sensibilidade "
+              "(OR 1,57; IC 95% 1,12-2,20) [@di2017air]. {{tbl-caracteristicas}}")
+    assert _same_anchors(before, before.replace("O risco foi maior", "A chance aumentou"))
+    assert not _same_anchors(before, before.replace("; p = 0,009", ""))                      # p-valor removido
+    assert not _same_anchors(before, before.replace(" e manteve-se na sensibilidade (OR 1,57; IC 95% 1,12-2,20)", ""))  # repetição removida
+    assert not _same_anchors(before, before.replace(" [@di2017air]", ""))
+    assert not _same_anchors(before, before.replace("{{tbl-caracteristicas}}", ""))
+
+
+def test_humanizer_rejection_keeps_writer_version(workspace):
+    from test_pipeline_components import _ctx, _seed_downstream_artifacts
+    from sciforge.agents.phase6_editorial import Phase6Editorial
+    _seed_downstream_artifacts(workspace)
+
+    class DroppingHumanizer(FakeProvider):
+        def _answer(self, system, user):
+            if "Humanizador" in system:
+                return user.split("TEXTO:\n", 1)[1].replace("; p = 0,009", "")
+            return super()._answer(system, user)
+    ctx = _ctx(workspace, DroppingHumanizer())
+    agent = Phase6Editorial(ctx)
+    agent.lang, agent.lk = "pt-BR", "pt"
+    from sciforge.core.schemas import InventarioSemente
+    agent.inv = InventarioSemente(ideia_nucleo="x.")
+    text = "Associação positiva (OR 1,57; IC 95% 1,12-2,20; p = 0,009)."
+    assert asyncio.run(agent._humanize_text(text, "Resultados")) == text
+
+
+def test_narrative_citation_with_final_period_is_kept_in_bib(workspace):
+    from test_pipeline_components import _ctx, _seed_downstream_artifacts
+    from conftest import SECTIONS_FAKE
+    from sciforge.agents.phase6_editorial import Phase6Editorial
+    from sciforge.tools.literature_swarm import parse_bib_keys
+    _seed_downstream_artifacts(workspace)
+    narrative = "Os achados concordam com a coorte do Medicare descrita por @di2017air."
+
+    class NarrativeWriter(FakeProvider):
+        def _answer(self, system, user):
+            if "Redator Científico" in system and "SEÇÃO A REDIGIR: Discussao" in user:
+                return SECTIONS_FAKE["Discussao"].replace(" [@di2017air]", "") + " " + narrative
+            return super()._answer(system, user)
+    from sciforge.agents.phase5_storyboard import Phase5Storyboard
+    ctx = _ctx(workspace, NarrativeWriter())
+    asyncio.run(Phase5Storyboard(ctx).execute())
+    asyncio.run(Phase6Editorial(ctx).execute())
+    entrega = workspace / "03_entrega"
+    assert narrative in (entrega / "artigo_final.qmd").read_text(encoding="utf-8")
+    assert "di2017air" in parse_bib_keys((entrega / "referencias.bib").read_text(encoding="utf-8"))
+
+
+def test_english_checklist_accepts_not_applicable(workspace):
+    from test_pipeline_components import _ctx, _seed_downstream_artifacts
+    from sciforge.agents.phase6_editorial import Phase6Editorial, _is_not_applicable
+    _seed_downstream_artifacts(workspace)
+    assert all(_is_not_applicable(x) for x in ("not applicable", "Not applicable (ecological design)", "N/A", "n/a", "não se aplica"))
+    assert not _is_not_applicable("Nada consta")
+
+    class EnglishKit(FakeProvider):
+        def _answer(self, system, user):
+            if "Kit de Submissão" in system and "MODO CHECKLIST" in user:
+                return json.dumps({"itens": [{"item": "6b", "local": "not applicable", "status": "nao_se_aplica"},
+                                             {"item": "12d", "local": "N/A", "status": "nao_se_aplica"},
+                                             {"item": "13a", "local": "Resultados §1", "status": "atendido"}]})
+            return super()._answer(system, user)
+    from sciforge.agents.phase5_storyboard import Phase5Storyboard
+    ctx = _ctx(workspace, EnglishKit())
+    asyncio.run(Phase5Storyboard(ctx).execute())
+    asyncio.run(Phase6Editorial(ctx).execute())
+    checklist = (workspace / "03_entrega" / "checklist_preenchido.md").read_text(encoding="utf-8")
+    row_6b = next(line for line in checklist.splitlines() if line.startswith("| 6b |"))
+    row_12d = next(line for line in checklist.splitlines() if line.startswith("| 12d |"))
+    assert "not applicable" in row_6b and "nao_se_aplica" in row_6b and "verificar" not in row_6b
+    assert "N/A" in row_12d and "verificar" not in row_12d
+
+
+def _s2_transport(seen: list[httpx.Request], status_by_path: dict[str, int] | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        path = request.url.path
+        if status_by_path and path in status_by_path:
+            return httpx.Response(status_by_path[path])
+        if request.url.host == "api.semanticscholar.org":
+            if path.endswith("/paper/search/bulk") or path.endswith("/paper/search"):
+                return httpx.Response(200, json={"data": [{"title": "Bulk paper", "year": 2022, "authors": [],
+                                                           "externalIds": {"DOI": "10.1/s2"}, "abstract": "A."}]})
+            if "/paper/DOI:" in path:
+                return httpx.Response(200, json={"abstract": "Resumo vindo da Semantic Scholar.",
+                                                 "externalIds": {"PubMedCentral": "999"}, "isOpenAccess": True})
+        if request.url.host == "api.openalex.org":
+            return httpx.Response(200, json={"display_name": "Seed", "abstract_inverted_index": None, "ids": {}})
+        if request.url.host == "www.ebi.ac.uk":
+            return httpx.Response(200, json={"resultList": {"result": []}})
+        return httpx.Response(404)
+    return httpx.MockTransport(handler)
+
+
+def test_semantic_scholar_api_key_header_bulk_and_silent_429(monkeypatch):
+    from sciforge.tools.literature_swarm import LiteratureSwarm, SwarmConfig
+    fast = {"openalex": 1000, "europepmc": 1000, "crossref": 1000, "semanticscholar": 1000}
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s2-chave-teste")
+    cfg = SwarmConfig.from_settings({"literature": {"rate_limits_rps": fast, "backoff_base_s": 0.01}})
+    assert cfg.semantic_scholar_api_key == "s2-chave-teste"
+    seen: list[httpx.Request] = []
+
+    async def go(c, limit):
+        async with LiteratureSwarm(c, transport=_s2_transport(seen)) as swarm:
+            return await swarm.search_semantic_scholar("pm2.5", 2020, limit)
+    papers = asyncio.run(go(cfg, 20))
+    req = seen[-1]
+    assert req.headers.get("x-api-key") == "s2-chave-teste" and req.url.path.endswith("/paper/search")
+    assert papers[0].doi == "10.1/s2"
+    asyncio.run(go(cfg, 500))                                     # > 100 → endpoint bulk
+    assert seen[-1].url.path.endswith("/paper/search/bulk") and seen[-1].url.params["sort"] == "citationCount:desc"
+    assert seen[-1].headers.get("x-api-key") == "s2-chave-teste"
+
+    monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY")
+    nokey = SwarmConfig.from_settings({"literature": {"rate_limits_rps": fast, "backoff_base_s": 0.01}})
+    seen.clear()
+
+    async def go429():
+        transport = _s2_transport(seen, {"/graph/v1/paper/search": 429})
+        async with LiteratureSwarm(nokey, transport=transport) as swarm:
+            return await swarm.search_all("pm2.5", years_back=5, sources=["semanticscholar", "openalex"])
+    papers, errors = asyncio.run(go429())
+    s2_reqs = [r for r in seen if r.url.host == "api.semanticscholar.org"]
+    assert "x-api-key" not in s2_reqs[0].headers
+    assert len(s2_reqs) == 2 and "semanticscholar" in errors      # 1 tentativa + 1 retry, sem derrubar o resto
+
+
+def test_seed_reference_abstract_enrichment_by_doi(monkeypatch):
+    from sciforge.tools.literature_swarm import LiteratureSwarm, SwarmConfig
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "k")
+    cfg = SwarmConfig(rate_limits_rps={"openalex": 1000, "europepmc": 1000, "crossref": 1000, "semanticscholar": 1000},
+                      backoff_base_s=0.01)
+    seen: list[httpx.Request] = []
+
+    async def go():
+        async with LiteratureSwarm(cfg, transport=_s2_transport(seen)) as swarm:
+            return await swarm.enrich_by_doi("https://doi.org/10.1056/NEJMoa1702747")
+    info = asyncio.run(go())
+    hosts = [r.url.host for r in seen]
+    assert hosts == ["api.openalex.org", "www.ebi.ac.uk", "api.semanticscholar.org"]   # ordem de fallback
+    assert info["resumo"] == "Resumo vindo da Semantic Scholar." and info["fonte"] == "semanticscholar"
+    assert info["pmcid"] == "PMC999" and info["open_access"]
+
+
+def test_phase2_keeps_valid_seed_reference_without_abstract(workspace, monkeypatch):
+    from sciforge.agents.phase2_research_swarm import Phase2ResearchSwarm
+    from sciforge.core.schemas import Paper
+    from sciforge.tools.literature_swarm import LiteratureSwarm, parse_bib_keys
+    from test_pipeline_components import _ctx
+    (workspace / "01_estado" / "01_inventario_semente.json").write_text(json.dumps({
+        "ideia_nucleo": "PM2.5 e internação.", "referencias_semente": ["10.1/seedsemresumo", "10.1/seedcomresumo"]}),
+        encoding="utf-8")
+    st = StateManager(workspace / "01_estado" / "sciforge_state.sqlite")
+    st.set_phase("phase1", "done")
+
+    async def fake_search_all(self, query, years_back=None, max_results=None, sources=None, agent=None):
+        return [Paper(titulo="Artigo do enxame sobre PM2.5", doi="10.1/enxame", ano=2023, autores=["Ana Lima"],
+                      resumo="PM2.5 increased admissions.", fontes=["openalex"], agentes=[agent or ""])], {}
+
+    async def fake_verify_reference(self, ref):
+        return {"consulta": ref, "existe": True, "doi": ref, "status_retratacao": "ok", "ano": 2017,
+                "titulo": f"Seed {ref}", "autores": ["Rui Costa"], "revista": "J"}
+
+    async def fake_verify_doi(self, doi):
+        return {"doi": doi, "existe": True, "status_retratacao": "ok"}
+
+    async def fake_enrich(self, doi):
+        return {"resumo": "Seed abstract found via EuropePMC." if doi.endswith("comresumo") else None,
+                "pmcid": None, "pmid": None, "open_access": False, "fonte": "europepmc"}
+    monkeypatch.setattr(LiteratureSwarm, "search_all", fake_search_all)
+    monkeypatch.setattr(LiteratureSwarm, "verify_reference", fake_verify_reference)
+    monkeypatch.setattr(LiteratureSwarm, "verify_doi", fake_verify_doi)
+    monkeypatch.setattr(LiteratureSwarm, "enrich_by_doi", fake_enrich)
+
+    class LedgerFake(FakeProvider):
+        def _answer(self, system, user):
+            if "Fichador" in system:
+                docs = json.loads(user.split("\n", 1)[1])
+                return json.dumps({"entradas": [{"citekey": d["citekey"], "desenho": "série temporal",
+                                                 "populacao": "adultos",
+                                                 "achados_principais": ["Achado do resumo."] if d["texto"] else []}
+                                                for d in docs]})
+            if "Sintetizador" in system:
+                return json.dumps({"agente1_estado_da_arte": ["pm2.5"], "agente2_metodologia": ["dlnm"],
+                                   "agente3_controversias": ["bias"]}) if "consultas" in user else "# Estado da arte\n"
+            return super()._answer(system, user)
+    ctx = _ctx(workspace, LedgerFake())
+    out = asyncio.run(Phase2ResearchSwarm(ctx).execute())
+    assert out["semente_enriquecida"] == 1 and out["semente_no_pool"] == 2
+    ledger = json.loads((workspace / "01_estado" / "02_evidence_ledger.json").read_text(encoding="utf-8"))
+    by_doi = {e["doi"]: e for e in ledger["entradas"]}
+    assert by_doi["10.1/seedcomresumo"]["achados_principais"] == ["Achado do resumo."]
+    assert by_doi["10.1/seedsemresumo"]["achados_principais"] == []          # mantida só com metadados
+    keys = parse_bib_keys((workspace / "01_estado" / "referencias_pool.bib").read_text(encoding="utf-8"))
+    assert len(keys) == 3                                                       # enxame + 2 sementes
+
+
+def test_validate_results_guards_zero_initial_n(tmp_path, monkeypatch):
+    from sciforge.agents import phase4_analyst
+    from sciforge.core.schemas import FluxoAmostral
+    from conftest import RESULTS_FIXTURE
+    p = tmp_path / "r.json"
+    p.write_text(json.dumps(RESULTS_FIXTURE), encoding="utf-8")
+    # o schema já exige n_inicial > 0; simulamos um contrato que escapou da validação
+    real = phase4_analyst.ResultadosVerificados.model_validate
+
+    def lenient(data):
+        res = real(data)
+        object.__setattr__(res, "fluxo_amostral", FluxoAmostral.model_construct(n_inicial=0, exclusoes=[], n_final=0))
+        return res
+    monkeypatch.setattr(phase4_analyst.ResultadosVerificados, "model_validate", staticmethod(lenient))
+    _, problems = phase4_analyst.validate_results(p, 0.2)
+    assert any("n_inicial=0" in x for x in problems)

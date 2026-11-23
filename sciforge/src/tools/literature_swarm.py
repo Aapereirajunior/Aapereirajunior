@@ -33,8 +33,8 @@ S2 = "https://api.semanticscholar.org/graph/v1"
 SOURCES = ("openalex", "europepmc", "crossref", "semanticscholar")
 
 
-def polite_user_agent() -> str:
-    email = os.environ.get("POLITE_EMAIL", "").strip()
+def polite_user_agent(email: str | None = None) -> str:
+    email = (email if email is not None else os.environ.get("POLITE_EMAIL", "")).strip()
     base = "SciForge/2.0 (+https://github.com/; scientific literature review)"
     return f"{base} mailto:{email}" if email else base
 
@@ -65,6 +65,12 @@ class SwarmConfig:
         "openalex": 8, "europepmc": 5, "crossref": 5, "semanticscholar": 0.9})
     timeout_s: float = 30.0
     fulltext_max_chars: int = 12000
+    # Semantic Scholar: chave opcional (header x-api-key). Sem chave, o limite público é baixo; um 429
+    # persistente é registrado como erro da fonte e as outras três seguem normalmente (fallback silencioso).
+    semantic_scholar_api_key: Optional[str] = field(default_factory=lambda: os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None)
+    semantic_scholar_bulk: bool = False          # força /paper/search/bulk (também usado se limit > 100)
+    semantic_scholar_retries_without_key: int = 1
+    polite_email: Optional[str] = field(default_factory=lambda: os.environ.get("POLITE_EMAIL") or None)
 
     @classmethod
     def from_settings(cls, settings: dict) -> "SwarmConfig":
@@ -75,6 +81,11 @@ class SwarmConfig:
         cfg.backoff_base_s = float(lit.get("backoff_base_s", cfg.backoff_base_s))
         cfg.rate_limits_rps.update(lit.get("rate_limits_rps") or {})
         cfg.fulltext_max_chars = int(lit.get("fulltext_max_chars", cfg.fulltext_max_chars))
+        cfg.semantic_scholar_bulk = bool(lit.get("semantic_scholar_bulk", cfg.semantic_scholar_bulk))
+        cfg.semantic_scholar_retries_without_key = int(
+            lit.get("semantic_scholar_retries_without_key", cfg.semantic_scholar_retries_without_key))
+        if lit.get("semantic_scholar_rps_with_key") and cfg.semantic_scholar_api_key:
+            cfg.rate_limits_rps["semanticscholar"] = float(lit["semantic_scholar_rps_with_key"])
         return cfg
 
 
@@ -109,7 +120,7 @@ class LiteratureSwarm:
         self._client: Optional[httpx.AsyncClient] = None
 
     async def __aenter__(self) -> "LiteratureSwarm":
-        headers = {"User-Agent": polite_user_agent(), "Accept": "application/json"}
+        headers = {"User-Agent": polite_user_agent(self.cfg.polite_email or ""), "Accept": "application/json"}
         self._client = httpx.AsyncClient(timeout=self.cfg.timeout_s, headers=headers, transport=self.transport,
                                          follow_redirects=True)
         return self
@@ -127,10 +138,11 @@ class LiteratureSwarm:
 
     # ------------------------------------------------------------------ HTTP com backoff
     async def _get(self, source: str, url: str, params: dict | None = None, headers: dict | None = None,
-                   expect_json: bool = True) -> Any:
+                   expect_json: bool = True, retries: int | None = None) -> Any:
         delay = self.cfg.backoff_base_s
         last: Exception | None = None
-        for attempt in range(self.cfg.max_retries + 1):
+        max_retries = self.cfg.max_retries if retries is None else retries
+        for attempt in range(max_retries + 1):
             await self.limiters[source].wait()
             try:
                 resp = await self.client.get(url, params=params, headers=headers)
@@ -140,7 +152,7 @@ class LiteratureSwarm:
                     retry_after = resp.headers.get("Retry-After")
                     wait = float(retry_after) if retry_after and retry_after.isdigit() else delay
                     last = httpx.HTTPStatusError(f"HTTP {resp.status_code}", request=resp.request, response=resp)
-                    if attempt < self.cfg.max_retries:
+                    if attempt < max_retries:
                         await asyncio.sleep(wait + random.uniform(0, 0.25 * wait))
                         delay *= 2
                         continue
@@ -149,10 +161,16 @@ class LiteratureSwarm:
                 return resp.json() if expect_json else resp.text
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 last = exc
-                if attempt < self.cfg.max_retries:
+                if attempt < max_retries:
                     await asyncio.sleep(delay + random.uniform(0, 0.25 * delay))
                     delay *= 2
-        raise RuntimeError(f"{source}: falha após {self.cfg.max_retries + 1} tentativas ({last})")
+        raise RuntimeError(f"{source}: falha após {max_retries + 1} tentativas ({last})")
+
+    def _s2_request_options(self) -> tuple[dict[str, str], int | None]:
+        """Header x-api-key quando houver chave; sem chave, poucas tentativas para não travar o enxame."""
+        if self.cfg.semantic_scholar_api_key:
+            return {"x-api-key": self.cfg.semantic_scholar_api_key}, None
+        return {}, self.cfg.semantic_scholar_retries_without_key
 
     # ------------------------------------------------------------------ fontes
     async def search_openalex(self, query: str, from_year: int | None, limit: int) -> list[Paper]:
@@ -161,9 +179,8 @@ class LiteratureSwarm:
         if from_year:
             filters.append(f"from_publication_date:{from_year}-01-01")
         params["filter"] = ",".join(filters)
-        email = os.environ.get("POLITE_EMAIL")
-        if email:
-            params["mailto"] = email
+        if self.cfg.polite_email:
+            params["mailto"] = self.cfg.polite_email
         data = await self._get("openalex", f"{OPENALEX}/works", params)
         out = []
         for w in (data or {}).get("results", [])[:limit]:
@@ -207,9 +224,8 @@ class LiteratureSwarm:
         if from_year:
             flt.append(f"from-pub-date:{from_year}-01-01")
         params["filter"] = ",".join(flt)
-        email = os.environ.get("POLITE_EMAIL")
-        if email:
-            params["mailto"] = email
+        if self.cfg.polite_email:
+            params["mailto"] = self.cfg.polite_email
         data = await self._get("crossref", f"{CROSSREF}/works", params)
         out = []
         for it in ((data or {}).get("message") or {}).get("items", [])[:limit]:
@@ -225,16 +241,21 @@ class LiteratureSwarm:
         return out
 
     async def search_semantic_scholar(self, query: str, from_year: int | None, limit: int) -> list[Paper]:
-        params: dict[str, Any] = {"query": query, "limit": min(limit, 100),
-                                  "fields": "title,year,authors,venue,abstract,citationCount,externalIds,"
-                                            "isOpenAccess,publicationTypes"}
+        """Busca por relevância em /paper/search (até 100); acima disso, ou com `semantic_scholar_bulk`,
+        usa /paper/search/bulk (até 1000 por página, ordenado por citações)."""
+        fields = "title,year,authors,venue,abstract,citationCount,externalIds,isOpenAccess,publicationTypes"
+        headers, retries = self._s2_request_options()
+        bulk = self.cfg.semantic_scholar_bulk or limit > 100
+        params: dict[str, Any] = {"query": query, "fields": fields}
         if from_year:
             params["year"] = f"{from_year}-"
-        headers = {}
-        key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
-        if key:
-            headers["x-api-key"] = key
-        data = await self._get("semanticscholar", f"{S2}/paper/search", params, headers=headers)
+        if bulk:
+            params["sort"] = "citationCount:desc"
+            url = f"{S2}/paper/search/bulk"
+        else:
+            params["limit"] = min(limit, 100)
+            url = f"{S2}/paper/search"
+        data = await self._get("semanticscholar", url, params, headers=headers, retries=retries)
         out = []
         for p in (data or {}).get("data", [])[:limit]:
             ext = p.get("externalIds") or {}
@@ -310,6 +331,59 @@ class LiteratureSwarm:
                 info["detalhes"].append("OpenAlex: is_retracted=true")
         info["status_retratacao"] = status if info["existe"] else "nao_verificado"
         return info
+
+    async def enrich_by_doi(self, doi: str) -> dict[str, Any]:
+        """Busca o resumo de um DOI em OpenAlex → EuropePMC → Semantic Scholar (para quando o Crossref não traz).
+
+        Retorna {"resumo", "pmcid", "pmid", "open_access", "fonte"}; resumo None se nenhuma fonte o tiver.
+        Falhas de rede/429 em uma fonte apenas passam para a próxima.
+        """
+        doi_n = normalize_doi(doi)
+        out: dict[str, Any] = {"resumo": None, "pmcid": None, "pmid": None, "open_access": False, "fonte": None}
+        if not doi_n:
+            return out
+        try:
+            oa = await self._get("openalex", f"{OPENALEX}/works/doi:{doi_n}",
+                                 {"mailto": self.cfg.polite_email} if self.cfg.polite_email else None)
+        except RuntimeError:
+            oa = None
+        if isinstance(oa, dict):
+            ids = oa.get("ids") or {}
+            out["pmcid"] = (ids.get("pmcid") or "").rsplit("/", 1)[-1] or None
+            out["pmid"] = (ids.get("pmid") or "").rsplit("/", 1)[-1] or None
+            out["open_access"] = bool((oa.get("open_access") or {}).get("is_oa"))
+            out["resumo"] = _openalex_abstract(oa.get("abstract_inverted_index"))
+            if out["resumo"]:
+                out["fonte"] = "openalex"
+                return out
+        try:
+            epmc = await self._get("europepmc", f"{EUROPEPMC}/search",
+                                   {"query": f'DOI:"{doi_n}"', "format": "json", "resultType": "core", "pageSize": 1})
+        except RuntimeError:
+            epmc = None
+        hits = ((epmc or {}).get("resultList") or {}).get("result", []) if isinstance(epmc, dict) else []
+        if hits:
+            r = hits[0]
+            out["pmcid"] = out["pmcid"] or r.get("pmcid")
+            out["pmid"] = out["pmid"] or r.get("pmid")
+            out["open_access"] = out["open_access"] or r.get("isOpenAccess") == "Y"
+            out["resumo"] = _strip_tags(r.get("abstractText"))
+            if out["resumo"]:
+                out["fonte"] = "europepmc"
+                return out
+        headers, retries = self._s2_request_options()
+        try:
+            s2 = await self._get("semanticscholar", f"{S2}/paper/DOI:{doi_n}",
+                                 {"fields": "abstract,externalIds,isOpenAccess"}, headers=headers, retries=retries)
+        except RuntimeError:
+            s2 = None
+        if isinstance(s2, dict) and s2.get("abstract"):
+            ext = s2.get("externalIds") or {}
+            out["resumo"] = s2["abstract"]
+            out["pmcid"] = out["pmcid"] or (f"PMC{ext['PubMedCentral']}" if ext.get("PubMedCentral") else None)
+            out["open_access"] = out["open_access"] or bool(s2.get("isOpenAccess"))
+            out["fonte"] = "semanticscholar"
+        return out
 
     async def resolve_title(self, title: str) -> Optional[str]:
         """Encontra o DOI mais provável para um título (Crossref)."""

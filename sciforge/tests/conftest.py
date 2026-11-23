@@ -197,9 +197,9 @@ class FakeProvider:
 
 def fake_settings(extra: dict | None = None) -> dict:
     roles = {r: {"provider": "fake", "model": "fake-1"} for r in
-             ("default", "fast", "vision", "writer", "reviewer", "local", "local_vision")}
+             ("default", "fast", "vision", "writer", "analyst", "reviewer", "local", "local_vision")}
     fake = {"provider": "fake", "model": "fake-1"}
-    phases = {f"phase{i}": {r: dict(fake) for r in ("*", "vision", "fast", "reviewer", "writer")} for i in range(1, 7)}
+    phases = {f"phase{i}": {r: dict(fake) for r in ("*", "vision", "fast", "reviewer", "writer", "analyst")} for i in range(1, 7)}
     base = {"privacy_mode": "cloud", "llm": {"roles": roles, "phases": phases}, "render": {"formats": ["docx"]}}
     if extra:
         base.update(extra)

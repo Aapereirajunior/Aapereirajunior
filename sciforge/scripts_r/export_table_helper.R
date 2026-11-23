@@ -109,7 +109,7 @@ sf_save_figure <- function(plot, nome, width = 7, height = 5, dpi = 300, caption
   dir_f <- .sf_dir(sf_paths()$figuras)
   base <- file.path(dir_f, gsub("-", "_", nome))
   ggplot2::ggsave(paste0(base, ".png"), plot, width = width, height = height, dpi = dpi, bg = "white")
-  ggplot2::ggsave(paste0(base, ".pdf"), plot, width = width, height = height, device = grDevices::cairo_pdf %||% "pdf")
+  ggplot2::ggsave(paste0(base, ".pdf"), plot, width = width, height = height, device = .sf_pdf_device())
   if (requireNamespace("svglite", quietly = TRUE)) {
     ggplot2::ggsave(paste0(base, ".svg"), plot, width = width, height = height, device = svglite::svglite)
   }
@@ -120,7 +120,13 @@ sf_save_figure <- function(plot, nome, width = 7, height = 5, dpi = 300, caption
   invisible(paste0(base, ".png"))
 }
 
-`%||%` <- function(a, b) if (is.null(a) || (is.function(a) && !capabilities("cairo"))) b else a
+# Dispositivo PDF: cairo_pdf (melhor suporte a UTF-8/fontes) quando disponível; senão o pdf() padrão.
+.sf_pdf_device <- function() {
+  if (isTRUE(capabilities("cairo"))) grDevices::cairo_pdf else "pdf"
+}
+
+# Coalescência de NULL sem sobrescrever o `%||%` nativo do R >= 4.4.
+.sf_or <- function(a, b) if (is.null(a)) b else a
 
 # --------------------------------------------------------------------------------- contrato de resultados
 sf_results_read <- function() {
@@ -139,7 +145,7 @@ sf_results_set <- function(key, value) {
 
 sf_results_append <- function(key, items) {
   res <- sf_results_read()
-  res[[key]] <- c(res[[key]] %||% list(), items)
+  res[[key]] <- c(.sf_or(res[[key]], list()), items)
   jsonlite::write_json(res, sf_paths()$resultados, auto_unbox = TRUE, pretty = TRUE, digits = NA,
                        null = "null", na = "null")
   invisible(res)
@@ -201,11 +207,22 @@ sf_diag_glm <- function(fit, modelo) {
     if (length(unique(y)) == 2) {
       r <- rank(p); n1 <- sum(y == 1); n0 <- sum(y == 0)
       out$auc <- (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
-      grp <- cut(p, unique(stats::quantile(p, seq(0, 1, .1))), include.lowest = TRUE)
-      obs <- tapply(y, grp, sum); exp_ <- tapply(p, grp, sum); nn <- tapply(y, grp, length)
-      hl <- sum((obs - exp_)^2 / (exp_ * (1 - exp_ / nn)), na.rm = TRUE)
-      out$calibracao <- sprintf("Hosmer-Lemeshow chi2=%.2f, gl=%d, p=%.3f", hl, length(obs) - 2,
-                                stats::pchisq(hl, length(obs) - 2, lower.tail = FALSE))
+      qs <- unique(stats::quantile(p, seq(0, 1, .1)))
+      if (length(qs) < 3) {
+        out$calibracao <- "Hosmer-Lemeshow não calculado: probabilidades previstas com menos de 3 grupos distintos"
+      } else {
+        grp <- cut(p, qs, include.lowest = TRUE)
+        obs <- tapply(y, grp, sum); exp_ <- tapply(p, grp, sum); nn <- tapply(y, grp, length)
+        keep <- !is.na(obs) & !is.na(exp_)
+        obs <- obs[keep]; exp_ <- exp_[keep]; nn <- nn[keep]
+        if (length(obs) <= 2) {
+          out$calibracao <- "Hosmer-Lemeshow não calculado: 2 ou menos grupos não vazios"
+        } else {
+          hl <- sum((obs - exp_)^2 / (exp_ * (1 - exp_ / nn)), na.rm = TRUE)
+          out$calibracao <- sprintf("Hosmer-Lemeshow chi2=%.2f, gl=%d, p=%.3f", hl, length(obs) - 2,
+                                    stats::pchisq(hl, length(obs) - 2, lower.tail = FALSE))
+        }
+      }
     }
   }
   out
