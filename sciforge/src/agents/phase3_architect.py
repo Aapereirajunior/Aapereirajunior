@@ -76,7 +76,7 @@ class Phase3Architect(PhaseAgent):
             header.append(f"{i + 1}. **{a.titulo}**{marca} — {a.pergunta} _Desenho_: {a.desenho}. "
                           f"_Viabilidade_: {a.viabilidade_com_dados}")
         doc = protocolo.protocolo_markdown.strip() + "\n\n" + "\n".join(header) + "\n"
-        self.ctx.write_text(self.ctx.ws.protocolo, doc)
+        self.ctx.write_text(self.ctx.ws.protocolo, doc, encoding="utf-8")
         self.ctx.write_json(self.ctx.ws.critica_revisor, {
             "rodadas": [p.model_dump() for p in pareceres],
             "checklist": protocolo.checklist, "pacotes_r": protocolo.pacotes_r,

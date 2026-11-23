@@ -24,7 +24,10 @@ if importlib.util.find_spec("sciforge") is None:
 
 from sciforge.core.llm_client import LLMRequest, LLMResponse  # noqa: E402
 
-HAS_R = shutil.which("Rscript") is not None
+from sciforge.core.platform_utils import find_pandoc, find_rscript  # noqa: E402
+
+HAS_R = find_rscript() is not None
+HAS_PANDOC = find_pandoc() is not None
 
 
 @pytest.fixture
@@ -195,7 +198,9 @@ class FakeProvider:
 def fake_settings(extra: dict | None = None) -> dict:
     roles = {r: {"provider": "fake", "model": "fake-1"} for r in
              ("default", "fast", "vision", "writer", "reviewer", "local", "local_vision")}
-    base = {"privacy_mode": "cloud", "llm": {"roles": roles}, "render": {"formats": ["docx"]}}
+    fake = {"provider": "fake", "model": "fake-1"}
+    phases = {f"phase{i}": {r: dict(fake) for r in ("*", "vision", "fast", "reviewer", "writer")} for i in range(1, 7)}
+    base = {"privacy_mode": "cloud", "llm": {"roles": roles, "phases": phases}, "render": {"formats": ["docx"]}}
     if extra:
         base.update(extra)
     return base

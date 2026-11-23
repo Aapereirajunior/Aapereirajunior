@@ -14,8 +14,6 @@ roda por até 2 ciclos. Não-convergência ou perda amostral injustificada BLOQU
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +21,7 @@ from pydantic import ValidationError
 
 from ..core.budget_guard import AttemptLimitReached
 from ..core.config import SCRIPTS_R_DIR
+from ..core.platform_utils import find_rscript, run_command
 from ..core.llm_client import extract_code_block
 from ..core.schemas import ResultadosVerificados
 from ..tools.data_profiler import profile_to_prompt
@@ -146,19 +145,18 @@ class Phase4Analyst(PhaseAgent):
         missing_tables = [t for t in res.tabelas if not (ws.tabelas / f"{t.replace('-', '_')}.rds").exists()]
         if missing_tables:
             raise GateBlocked(f"Tabelas declaradas sem arquivo .rds: {missing_tables}")
-        self.ctx.write_text(ws.estado / "04_relatorio_analise.md", self._report(res, qa))
+        self.ctx.write_text(ws.estado / "04_relatorio_analise.md", self._report(res, qa), encoding="utf-8")
         reprovadas = [f for f, r in qa.items() if not r["aprovado"]]
         return {"n_final": res.fluxo_amostral.n_final, "modelos": len(res.diagnosticos_modelos),
                 "tabelas": res.tabelas, "figuras": res.figuras, "figuras_reprovadas_qa": reprovadas}
 
     # ---------------------------------------------------------------- renv
     def _init_renv(self, cfg: dict) -> dict:
-        rscript = shutil.which("Rscript")
         pkgs = ",".join(cfg.get("r_packages", []))
-        proc = subprocess.run([rscript, "--vanilla", str(SCRIPTS_R_DIR / "init_renv.R"), str(self.ctx.ws.analise), pkgs],
-                              capture_output=True, text=True, timeout=3600)
+        proc = run_command([find_rscript(), "--vanilla", SCRIPTS_R_DIR / "init_renv.R", self.ctx.ws.analise, pkgs],
+                           timeout=3600)
         status_path = self.ctx.ws.analise / "renv_status.json"
-        status = json.loads(status_path.read_text()) if status_path.exists() else {"erro": proc.stderr[-1000:]}
+        status = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {"erro": proc.stderr[-1000:]}
         self.ctx.log(f"  • renv: {len(status.get('instalados', []))} pacotes disponíveis, "
                      f"faltantes: {status.get('faltantes', [])}")
         return status
@@ -197,7 +195,7 @@ class Phase4Analyst(PhaseAgent):
         ws = self.ctx.ws
 
         def check() -> Optional[str]:
-            data = json.loads(ws.resultados.read_text()) if ws.resultados.exists() else {}
+            data = json.loads(ws.resultados.read_text(encoding="utf-8")) if ws.resultados.exists() else {}
             if name == "01_prep_dados.R":
                 missing = [k for k in ("fluxo_amostral", "tratamento_missing") if k not in data]
                 if missing:

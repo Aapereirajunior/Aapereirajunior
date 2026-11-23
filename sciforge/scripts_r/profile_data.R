@@ -16,7 +16,7 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) stop("Uso: Rscript profile_data.R <entrada> <saida.json> [min_celula]")
-in_path  <- normalizePath(args[[1]], mustWork = TRUE)
+in_path  <- normalizePath(args[[1]], winslash = "/", mustWork = TRUE)
 out_path <- args[[2]]
 min_cell <- if (length(args) >= 3) as.integer(args[[3]]) else 5L
 max_levels <- 15L

@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
@@ -23,6 +22,7 @@ import httpx
 import yaml
 
 from ..core.config import CONFIG_DIR
+from ..core.platform_utils import find_pandoc, find_quarto, run_command
 
 CSL_DIR = CONFIG_DIR / "csl"
 CSL_REPO_RAW = "https://raw.githubusercontent.com/citation-style-language/styles/master"
@@ -262,7 +262,7 @@ def collect_objects(entrega: Path) -> tuple[dict[str, dict], dict[str, dict]]:
 # ============================================================================================
 
 def quarto_available() -> bool:
-    return shutil.which("quarto") is not None
+    return find_quarto() is not None
 
 
 def render(qmd: Path, formats: Iterable[str] = ("docx", "pdf"), timeout_s: int = 900) -> dict[str, str]:
@@ -272,8 +272,7 @@ def render(qmd: Path, formats: Iterable[str] = ("docx", "pdf"), timeout_s: int =
     qmd = Path(qmd).resolve()
     results = {}
     for fmt in formats:
-        proc = subprocess.run(["quarto", "render", qmd.name, "--to", fmt], cwd=qmd.parent,
-                              capture_output=True, text=True, timeout=timeout_s)
+        proc = run_command([find_quarto(), "render", qmd.name, "--to", fmt], cwd=qmd.parent, timeout=timeout_s)
         out = qmd.with_suffix(f".{fmt}")
         results[fmt] = str(out) if proc.returncode == 0 and out.exists() else f"ERRO: {proc.stderr[-1500:]}"
     return results
@@ -297,7 +296,7 @@ def qmd_to_preview_markdown(qmd_text: str, entrega: Path) -> str:
 
 def render_with_pandoc_fallback(qmd: Path, fmt: str = "docx") -> str:
     """Prévia sem Quarto: Pandoc + citeproc. Numeração de cross-refs fica a cargo do Quarto real."""
-    pandoc = shutil.which("pandoc")
+    pandoc = find_pandoc()
     if pandoc is None:
         raise QuartoNotFound("Nem Quarto nem Pandoc encontrados.")
     qmd = Path(qmd).resolve()
@@ -305,8 +304,8 @@ def render_with_pandoc_fallback(qmd: Path, fmt: str = "docx") -> str:
     md_path = qmd.with_name(qmd.stem + "_previa.md")
     md_path.write_text(md, encoding="utf-8")
     out = qmd.with_name(f"{qmd.stem}_previa.{fmt}")
-    proc = subprocess.run([pandoc, md_path.name, "--citeproc", "-o", out.name, "--resource-path", "."],
-                          cwd=qmd.parent, capture_output=True, text=True, timeout=300)
+    proc = run_command([pandoc, md_path.name, "--citeproc", "-o", out.name, "--resource-path", "."],
+                       cwd=qmd.parent, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"Pandoc falhou: {proc.stderr[-1500:]}")
     return str(out)

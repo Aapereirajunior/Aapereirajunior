@@ -69,14 +69,14 @@ class Phase2ResearchSwarm(PhaseAgent):
         self.ctx.write_json(self.ctx.ws.evidence_ledger, ledger)
         valid_keys = {e.citekey for e in ledger.entradas if e.status_retratacao not in ("retratado",)}
         final_pool = [p for p in pool if p.citekey in valid_keys]
-        self.ctx.write_text(self.ctx.ws.bib_pool, to_bibtex(final_pool))
+        self.ctx.write_text(self.ctx.ws.bib_pool, to_bibtex(final_pool), encoding="utf-8")
         with open(self.ctx.ws.corpus, "w", encoding="utf-8") as fh:
             for p in final_pool:
                 fh.write(json.dumps({"citekey": p.citekey, "doi": p.doi,
                                      "texto": (p.resumo or "") + " " + fulltexts.get(p.citekey or "", "")},
                                     ensure_ascii=False) + "\n")
         sota = await self.cached_step("estado_da_arte", lambda: self._synthesize(inv, ledger, seed_audit, raw["erros"]))
-        self.ctx.write_text(self.ctx.ws.estado_da_arte, sota)
+        self.ctx.write_text(self.ctx.ws.estado_da_arte, sota, encoding="utf-8")
         return {"artigos_coletados": len(papers), "pool_final": len(final_pool),
                 "fichamentos": len(ledger.entradas), "erros_fontes": raw["erros"],
                 "referencias_semente_auditadas": len(seed_audit)}

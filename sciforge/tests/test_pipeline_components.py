@@ -18,7 +18,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from conftest import (BIB_FIXTURE, FIXTURES, HAS_R, LEDGER_FIXTURE, RESULTS_FIXTURE, FakeProvider,
+from conftest import (BIB_FIXTURE, FIXTURES, HAS_PANDOC, HAS_R, LEDGER_FIXTURE, RESULTS_FIXTURE, FakeProvider,
                       fake_settings)
 from sciforge.agents.base import PhaseContext
 from sciforge.agents.phase4_analyst import validate_results
@@ -160,7 +160,7 @@ sf_results_set("figuras", list("fig-efeito"))
 
 @requires_r
 def test_r_sandbox_runs_pipeline_and_contract_validates(workspace):
-    (workspace / "01_estado" / "04_resultados_verificados.json").write_text("{}")
+    (workspace / "01_estado" / "04_resultados_verificados.json").write_text("{}", encoding="utf-8")
     sandbox = RSandbox(workspace)
     res = sandbox.run_code(PIPELINE_R, "pipeline_teste.R")
     assert res.ok, res.feedback()
@@ -176,7 +176,7 @@ def test_r_sandbox_runs_pipeline_and_contract_validates(workspace):
     assert info["dpi_x"] == 300 and info["width"] == 1800
     assert deterministic_checks(png) == []
     assert (workspace / "03_entrega" / "tabelas" / "tbl_pm25_sexo.rds").exists()
-    assert "| sexo |" in (workspace / "03_entrega" / "tabelas" / "tbl_pm25_sexo.md").read_text()
+    assert "| sexo |" in (workspace / "03_entrega" / "tabelas" / "tbl_pm25_sexo.md").read_text(encoding="utf-8")
 
 
 @requires_r
@@ -185,7 +185,7 @@ def test_r_sandbox_autofix_loop_and_attempt_limit(workspace, tmp_path):
     budget = BudgetGuard({"budget": {"limits": {"r_script_max_retries": 4}}}, state)
     sandbox = RSandbox(workspace)
     script = workspace / "02_analise" / "quebrado.R"
-    script.write_text('x <- funcao_inexistente(1)\n')
+    script.write_text('x <- funcao_inexistente(1)\n', encoding="utf-8")
     calls = []
 
     async def fixer(code, feedback, attempt):
@@ -196,7 +196,7 @@ def test_r_sandbox_autofix_loop_and_attempt_limit(workspace, tmp_path):
     assert "funcao_inexistente" in calls[0]
 
     script2 = workspace / "02_analise" / "sempre_quebrado.R"
-    script2.write_text('stop("erro permanente")\n')
+    script2.write_text('stop("erro permanente")\n', encoding="utf-8")
 
     async def bad_fixer(code, feedback, attempt):
         return 'stop("erro permanente")\n'
@@ -212,11 +212,11 @@ def test_contract_blocks_nonconvergence_and_silent_loss(tmp_path):
     bad["diagnosticos_modelos"][0]["converged"] = False
     bad["fluxo_amostral"] = {"n_inicial": 500, "exclusoes": [{"criterio": "sem motivo", "n_removido": 200}], "n_final": 300}
     p = tmp_path / "r.json"
-    p.write_text(json.dumps(bad))
+    p.write_text(json.dumps(bad), encoding="utf-8")
     _, problems = validate_results(p, 0.2)
     assert any("NÃO convergiu" in x for x in problems)
     assert any("Perda amostral" in x for x in problems)
-    p.write_text(json.dumps(RESULTS_FIXTURE))
+    p.write_text(json.dumps(RESULTS_FIXTURE), encoding="utf-8")
     assert validate_results(p, 0.2)[1] == []
 
 
@@ -376,7 +376,7 @@ def test_firewall_guarded_read_and_prompt_guard(workspace, tmp_path):
     fw = ic.DraftFirewall.from_draft(DRAFT)
     fw.save(tmp_path / "fp.json")
     fw = ic.DraftFirewall.load(tmp_path / "fp.json")
-    assert "Poluição" not in (tmp_path / "fp.json").read_text()  # apenas hashes
+    assert "Poluição" not in (tmp_path / "fp.json").read_text(encoding="utf-8")  # apenas hashes
     leak = "Contexto:\n" + DRAFT.split("\n\n")[1]
     fw.guard("phase1", leak)  # Fase 1 pode
     with pytest.raises(ic.FirewallViolation):
@@ -447,8 +447,8 @@ def test_qmd_generation_with_deterministic_tables(tmp_path):
 
 def test_csl_local_and_download(tmp_path):
     van = ensure_csl("vancouver", tmp_path / "a")
-    assert "<style" in van.read_text() and van.name == "estilo_alvo.csl"
-    assert "Associação Brasileira" in ensure_csl("abnt", tmp_path / "b").read_text()
+    assert "<style" in van.read_text(encoding="utf-8") and van.name == "estilo_alvo.csl"
+    assert "Associação Brasileira" in ensure_csl("abnt", tmp_path / "b").read_text(encoding="utf-8")
 
     def handler(request):
         if request.url.path.endswith("/estilo-teste-sciforge.csl") and "/dependent/" not in request.url.path:
@@ -456,7 +456,7 @@ def test_csl_local_and_download(tmp_path):
         return httpx.Response(404)
     from sciforge.core import config
     path = ensure_csl("estilo-teste-sciforge", tmp_path / "c", transport=httpx.MockTransport(handler))
-    assert "<style" in path.read_text()
+    assert "<style" in path.read_text(encoding="utf-8")
     (config.CONFIG_DIR / "csl" / "estilo-teste-sciforge.csl").unlink()
 
 
@@ -467,15 +467,15 @@ def test_journal_rules_parsing():
     assert rules.estrutura_resumo == ["Objetivo", "Métodos", "Resultados", "Conclusão"]
 
 
-@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc não instalado")
+@pytest.mark.skipif(not HAS_PANDOC, reason="pandoc não instalado")
 def test_pandoc_fallback_renders_docx(tmp_path):
     (tmp_path / "tabelas").mkdir()
-    (tmp_path / "tabelas" / "tbl_x.md").write_text("| a | b |\n|---|---|\n| 1 | 2 |\n")
-    (tmp_path / "referencias.bib").write_text(BIB_FIXTURE)
+    (tmp_path / "tabelas" / "tbl_x.md").write_text("| a | b |\n|---|---|\n| 1 | 2 |\n", encoding="utf-8")
+    (tmp_path / "referencias.bib").write_text(BIB_FIXTURE, encoding="utf-8")
     ensure_csl("vancouver", tmp_path)
     qmd = build_qmd(title="Teste", sections=[("Resultados", "Texto [@di2017air].\n\n" + table_chunk("tbl-x", "tabelas/tbl_x.rds", "Tab X"))],
                     formats=["docx"])
-    (tmp_path / "artigo_final.qmd").write_text(qmd)
+    (tmp_path / "artigo_final.qmd").write_text(qmd, encoding="utf-8")
     preview = qmd_to_preview_markdown(qmd, tmp_path)
     assert ": Tab X {#tbl-x}" in preview and "readRDS" not in preview
     out = render_with_pandoc_fallback(tmp_path / "artigo_final.qmd")
@@ -526,8 +526,8 @@ def test_llm_router_privacy_modes():
     assert provider.local and provider.name == "ollama"
     provider, _ = client.resolve("vision", "phase4", sensitive=True, vision=True)
     assert provider.name == "ollama"
-    provider, _ = client.resolve("writer", "phase6", sensitive=False, vision=False)
-    assert provider.name == "gemini"
+    provider, model = client.resolve("writer", "phase6", sensitive=False, vision=False)
+    assert provider.name == "claude" and model == "claude-opus-5-5"
     settings["privacy_mode"] = "strict"
     settings["llm"]["roles"]["local"] = {"provider": "gemini", "model": "gemini-2.5-pro"}
     with pytest.raises(PrivacyViolation):
@@ -566,7 +566,7 @@ def test_phase1_builds_inventory_and_activates_firewall(workspace):
     provider = FakeProvider()
     ctx = _ctx(workspace, provider)
     result = asyncio.run(Phase1Intake(ctx).execute())
-    inv = InventarioSemente.model_validate_json((workspace / "01_estado" / "01_inventario_semente.json").read_text())
+    inv = InventarioSemente.model_validate_json((workspace / "01_estado" / "01_inventario_semente.json").read_text(encoding="utf-8"))
     assert result["datasets"] == ["dados_sinteticos.csv"] and inv.schema_dados[0].n_linhas == 500
     assert inv.glossario_obrigatorio["SIH/SUS"] and inv.observacoes_visuais_preliminares
     assert (workspace / "01_estado" / ".firewall_fingerprint.json").exists()
@@ -580,23 +580,23 @@ def test_phase1_builds_inventory_and_activates_firewall(workspace):
 def _seed_downstream_artifacts(ws: Path) -> None:
     est = ws / "01_estado"
     (est / "01_inventario_semente.json").write_text(json.dumps({
-        "ideia_nucleo": "PM2.5 e internação em idosos.", "glossario_obrigatorio": {"DS": "distrito sanitário"}}))
-    (est / "02_evidence_ledger.json").write_text(json.dumps(LEDGER_FIXTURE))
-    (est / "referencias_pool.bib").write_text(BIB_FIXTURE)
-    (est / "02_estado_da_arte.md").write_text("# Estado da arte\nSíntese [@di2017air].")
-    (est / "02_corpus.jsonl").write_text(json.dumps({"citekey": "di2017air", "texto": "Medicare cohort abstract."}) + "\n")
-    (est / "03_protocolo_proposto.md").write_text("# Protocolo\nEstudo transversal; modelo logístico.")
-    (est / "03_critica_revisor2.json").write_text(json.dumps({"rodadas": [], "checklist": "STROBE"}))
-    (est / "04_resultados_verificados.json").write_text(json.dumps(RESULTS_FIXTURE))
+        "ideia_nucleo": "PM2.5 e internação em idosos.", "glossario_obrigatorio": {"DS": "distrito sanitário"}}), encoding="utf-8")
+    (est / "02_evidence_ledger.json").write_text(json.dumps(LEDGER_FIXTURE), encoding="utf-8")
+    (est / "referencias_pool.bib").write_text(BIB_FIXTURE, encoding="utf-8")
+    (est / "02_estado_da_arte.md").write_text("# Estado da arte\nSíntese [@di2017air].", encoding="utf-8")
+    (est / "02_corpus.jsonl").write_text(json.dumps({"citekey": "di2017air", "texto": "Medicare cohort abstract."}) + "\n", encoding="utf-8")
+    (est / "03_protocolo_proposto.md").write_text("# Protocolo\nEstudo transversal; modelo logístico.", encoding="utf-8")
+    (est / "03_critica_revisor2.json").write_text(json.dumps({"rodadas": [], "checklist": "STROBE"}), encoding="utf-8")
+    (est / "04_resultados_verificados.json").write_text(json.dumps(RESULTS_FIXTURE), encoding="utf-8")
     fw = ic.DraftFirewall.from_draft(DRAFT)
     fw.save(est / ".firewall_fingerprint.json")
     tab = ws / "03_entrega" / "tabelas"
     (tab / "tbl_caracteristicas.rds").write_bytes(b"RDS-placeholder")
-    (tab / "tbl_caracteristicas.json").write_text(json.dumps({"label": "tbl-caracteristicas", "caption": "Características da amostra"}))
-    (tab / "tbl_caracteristicas.md").write_text("| Variável | Valor |\n|---|---|\n| Idade | 72 |\n")
+    (tab / "tbl_caracteristicas.json").write_text(json.dumps({"label": "tbl-caracteristicas", "caption": "Características da amostra"}), encoding="utf-8")
+    (tab / "tbl_caracteristicas.md").write_text("| Variável | Valor |\n|---|---|\n| Idade | 72 |\n", encoding="utf-8")
     fig = ws / "03_entrega" / "figuras"
     write_test_png(fig / "fig_efeito.png", 1800, 1200, 300)
-    (fig / "fig_efeito.json").write_text(json.dumps({"label": "fig-efeito", "caption": "OR por PM2.5"}))
+    (fig / "fig_efeito.json").write_text(json.dumps({"label": "fig-efeito", "caption": "OR por PM2.5"}), encoding="utf-8")
     st = StateManager(est / "sciforge_state.sqlite")
     for p in ("phase1", "phase2", "phase3", "phase4"):
         st.set_phase(p, "done")
@@ -609,20 +609,20 @@ def test_phases5_and_6_end_to_end_with_fake_llm(workspace):
     provider = FakeProvider()
     ctx = _ctx(workspace, provider)
     asyncio.run(Phase5Storyboard(ctx).execute())
-    assert json.loads((workspace / "01_estado" / "05_storyboard.json").read_text())["fio_condutor"]
+    assert json.loads((workspace / "01_estado" / "05_storyboard.json").read_text(encoding="utf-8"))["fio_condutor"]
     out = asyncio.run(Phase6Editorial(ctx).execute())
     entrega = workspace / "03_entrega"
-    qmd = (entrega / "artigo_final.qmd").read_text()
+    qmd = (entrega / "artigo_final.qmd").read_text(encoding="utf-8")
     assert qmd.index("# Introdução") < qmd.index("# Métodos") < qmd.index("# Resultados") < qmd.index("# Discussão")
     assert 'readRDS("tabelas/tbl_caracteristicas.rds")' in qmd and "{#fig-efeito" in qmd
     assert "csl: estilo_alvo.csl" in qmd and (entrega / "estilo_alvo.csl").exists()
-    assert parse_bib_keys((entrega / "referencias.bib").read_text()) == {"di2017air", "cohen2017estimates"}
+    assert parse_bib_keys((entrega / "referencias.bib").read_text(encoding="utf-8")) == {"di2017air", "cohen2017estimates"}
     assert (entrega / "material_suplementar.qmd").exists()
-    checklist = (entrega / "checklist_preenchido.md").read_text()
+    checklist = (entrega / "checklist_preenchido.md").read_text(encoding="utf-8")
     assert "| 13a |" in checklist and "Resultados §1" in checklist
     assert "verificar (local inválido)" in checklist  # local inexistente apontado pelo LLM é rejeitado
-    assert (entrega / "cover_letter.md").read_text().startswith("Prezado")
-    report = (entrega / "relatorio_auditoria_final.md").read_text()
+    assert (entrega / "cover_letter.md").read_text(encoding="utf-8").startswith("Prezado")
+    report = (entrega / "relatorio_auditoria_final.md").read_text(encoding="utf-8")
     assert "numeros_sem_correspondencia**: 0" in report
     assert out["erros_auditoria"] == 0, report
     # retomada granular: nova execução não chama o LLM para seções já concluídas
@@ -631,7 +631,7 @@ def test_phases5_and_6_end_to_end_with_fake_llm(workspace):
     asyncio.run(Phase6Editorial(_ctx(workspace, provider)).execute())
     new_calls = provider.calls[n_calls:]
     assert not any("Redator" in s for s, _ in new_calls)
-    if shutil.which("pandoc"):
+    if HAS_PANDOC:
         assert (entrega / "artigo_final_previa.docx").exists() or (entrega / "artigo_final.docx").exists()
 
 
@@ -709,7 +709,7 @@ def test_phase4_pipeline_with_autofix_and_contract(workspace):
     for sub in ("tabelas", "figuras"):
         for f in (workspace / "03_entrega" / sub).glob("*"):
             f.unlink()
-    (workspace / "01_estado" / "01_inventario_semente.json").write_text(json.dumps({"ideia_nucleo": "PM2.5 e internação."}))
+    (workspace / "01_estado" / "01_inventario_semente.json").write_text(json.dumps({"ideia_nucleo": "PM2.5 e internação."}), encoding="utf-8")
     provider = FakeR()
     settings = load_settings(workspace, fake_settings({"analysis": {"use_renv": False}}))
     client = LLMClient(settings, providers={"fake": provider})
@@ -720,5 +720,5 @@ def test_phase4_pipeline_with_autofix_and_contract(workspace):
     assert ctx.state.attempts("r_script", "02_modelos_principais.R") == 1  # uma auto-correção
     res, problems = validate_results(workspace / "01_estado" / "04_resultados_verificados.json", 0.2)
     assert problems == [] and len(res.diagnosticos_modelos) == 2 and res.resultados_sensibilidade
-    report = (workspace / "01_estado" / "04_relatorio_analise.md").read_text()
+    report = (workspace / "01_estado" / "04_relatorio_analise.md").read_text(encoding="utf-8")
     assert "N analítico" in report and "aprovada" in report

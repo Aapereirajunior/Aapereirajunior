@@ -31,6 +31,22 @@ pip install -e ".[dev]"                                 # instala o comando `sci
 cp .env.example .env                                    # preencha as chaves
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+cd sciforge
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1          # se bloqueado: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install -e ".[dev]"
+Copy-Item .env.example .env
+```
+
+O SciForge não depende de comandos de shell: caminhos usam `pathlib`, toda leitura/escrita de arquivo e
+todo subprocesso usam UTF-8, e `Rscript`/`quarto`/`pandoc` são localizados automaticamente
+(`PATH` → `R_HOME` → registro do Windows → `C:\Program Files\R\R-*\bin`, escolhendo a versão mais
+recente; Quarto em `Program Files\Quarto` ou `%LOCALAPPDATA%\Programs\Quarto`; Pandoc embutido no Quarto).
+Para forçar um executável, defina `SCIFORGE_RSCRIPT`, `SCIFORGE_QUARTO` ou `SCIFORGE_PANDOC` no `.env`.
+
 O modo editável (`-e`) é o recomendado: os prompts (`prompts/`), as configurações (`config/`) e os
 utilitários R (`scripts_r/`) são lidos da pasta do repositório. Se instalar de outra forma, defina
 `SCIFORGE_HOME=/caminho/para/sciforge`.
@@ -76,8 +92,10 @@ Troque os modelos em `config/settings.yaml → llm.roles`.
 
 | Variável | Uso |
 |---|---|
-| `GEMINI_API_KEY` | papéis `default`, `fast`, `vision`, `writer` (padrão) |
-| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | papel `reviewer` (qualquer endpoint OpenAI-compatível) |
+| `GEMINI_API_KEY` | Fases 1–2 e QA visual (padrão) |
+| `ANTHROPIC_API_KEY` | Claude (Fases 3, 5 e 6 no padrão), via SDK oficial `anthropic` |
+| `OPENROUTER_API_KEY` | Revisor #2 no padrão (`openai/gpt-4.1`); qualquer modelo do OpenRouter |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | provedor `openai` (qualquer endpoint OpenAI-compatível) |
 | `OLLAMA_HOST` | modelos locais |
 | `POLITE_EMAIL` | `User-Agent` com `mailto:` (polite pool OpenAlex/Crossref) |
 | `SEMANTIC_SCHOLAR_API_KEY` | opcional; sem ela a Semantic Scholar costuma responder 429 e o enxame segue com as outras fontes |
@@ -103,6 +121,8 @@ sciforge run meu_estudo
 | Comando | Função |
 |---|---|
 | `sciforge init <projeto>` | cria o workspace a partir de `workspace_template/` |
+| `sciforge phase <projeto> phaseN` | executa uma única fase (exige fases e portões anteriores concluídos) |
+| `sciforge models [projeto]` | mostra qual provedor/modelo atende cada papel em cada fase |
 | `sciforge run <projeto> [--until phaseN] [--auto-approve]` | executa as fases pendentes, pausando nos portões |
 | `sciforge resume <projeto>` | retoma do ponto exato (fase e seção) em que parou |
 | `sciforge status <projeto>` | fases, portões, chamadas, tokens, custo e eventos |
@@ -143,6 +163,35 @@ citado), `estilo_alvo.csl`, `tabelas/` (`.rds` + `.html`/`.md`), `figuras/` (PNG
 | **7. Quarto + CSL + Kit** | `quarto_renderer.build_qmd` (YAML com `bibliography`, `csl`, `crossref`, `reference-doc`), `ensure_csl` (Vancouver/ABNT locais + download pelo nome), `render`/`render_project`, checklist com locais validados contra os parágrafos reais, carta ao editor e relatório de auditoria. |
 | **8. Custo e checkpoints** | `budget_guard.BudgetGuard` (tokens/custo/chamadas por fase, teto global, 4 correções R, 2 ciclos de QA, 2 rodadas de revisão); `state_manager.StateManager` (SQLite: fases, etapas, seções, uso, tentativas, portões); cada seção da Fase 6 é um checkpoint. |
 
+### Roteamento multi-modelo por fase
+
+`config/settings.yaml → llm.phases` define provedor e modelo por fase e por papel. Ordem de resolução:
+`phases.<fase>.<papel>` → `phases.<fase>."*"` → `roles.<papel>` → `roles.default`. Padrão entregue:
+
+| Fase | Modelo principal | Observações |
+|---|---|---|
+| 1 Intake | Gemini 2.5 Pro (visão: Gemini 2.5 Flash) | em `hybrid`/`strict` vai para o Ollama |
+| 2 Enxame | Gemini 2.5 Pro (fichamento: Flash) | |
+| 3 Arquiteto | Claude Opus 5.5 | Revisor #2 via OpenRouter (`openai/gpt-4.1`), outra família de modelo |
+| 4 Análise | Claude Opus 5.5 / QA visual Gemini (só em `cloud`) | em `hybrid`/`strict` tudo no Ollama |
+| 5 Storyboard | Claude Opus 5.5 | |
+| 6 Redação | Claude Opus 5.5 | juiz de citações/checklist: Gemini Flash; Revisor #2 via OpenRouter |
+
+Provedores disponíveis (`kind`): `gemini`, `anthropic` (SDK oficial, streaming, `output_config.effort` e
+fallback de recusa no servidor — `fallbacks: null` desativa), `openai`, `openrouter` (endpoint
+`https://openrouter.ai/api/v1`, slugs como `openai/gpt-4.1`; confira os nomes em openrouter.ai/models) e
+`ollama`. Exemplo de override por projeto (`<projeto>/01_estado/settings.override.yaml`):
+
+```yaml
+llm:
+  phases:
+    phase6:
+      "*": { provider: openrouter, model: openai/gpt-4.1 }
+```
+
+`sciforge models` imprime a tabela efetiva. O custo de cada chamada é contabilizado por fase com os
+preços de `llm.pricing` (modelos via OpenRouter usam o slug como chave).
+
 ### `privacy_mode`
 
 | Modo | Fase 1 e Fase 4 | Demais fases |
@@ -153,10 +202,19 @@ citado), `estilo_alvo.csl`, `tabelas/` (`.rds` + `.html`/`.md`), `figuras/` (PNG
 
 ---
 
-## 4. Servidor MCP (uso interativo na IDE)
+## 4. Servidor MCP (IDE e Goose)
 
-Ferramentas: `search_literature_swarm`, `profile_r_dataset`, `verify_doi_and_retraction`,
+Ferramentas utilitárias: `search_literature_swarm`, `profile_r_dataset`, `verify_doi_and_retraction`,
 `audit_quarto_manuscript`, `render_quarto_submission`.
+
+Operação do fluxo: `sciforge_init_project`, `sciforge_status`, `sciforge_run_phase`,
+`sciforge_approve_gate` (exige a frase de aprovação do pesquisador), `sciforge_read_artifact` (lista
+branca de artefatos; nunca devolve o rascunho) e `sciforge_update_protocol` (edições antes do Portão #1,
+com checagem do firewall).
+
+**STDIO limpo:** o stdout é exclusivo do JSON-RPC. Todo logging vai para stderr, cada ferramenta roda com
+`sys.stdout` redirecionado para stderr e os subprocessos (R, Quarto, Pandoc) têm saída capturada. Um
+teste sobe o servidor real e exige que toda linha do stdout seja JSON-RPC válido.
 
 Bloco para Claude Desktop/Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`) ou VS Code:
 
@@ -179,21 +237,68 @@ Se o executável não estiver no `PATH` da IDE, use `"command": "/caminho/.venv/
 `"args": ["-m", "sciforge.mcp_server.server"]`. O servidor funciona com o SDK `mcp` 1.x (`FastMCP`) e 2.x
 (`MCPServer`).
 
+### Goose (Windows)
+
+1. Instale o SciForge como na seção 1.1 e descubra o caminho do executável:
+
+   ```powershell
+   (Get-Command sciforge-mcp).Source
+   # ex.: C:\Users\voce\sciforge\.venv\Scripts\sciforge-mcp.exe
+   ```
+
+2. **Registro permanente:** adicione ao arquivo de configuração do Goose
+   (`%APPDATA%\Block\goose\config\config.yaml`; confirme o local com `goose info -v`):
+
+   ```yaml
+   extensions:
+     sciforge:
+       enabled: true
+       type: stdio
+       name: sciforge
+       cmd: C:\Users\voce\sciforge\.venv\Scripts\sciforge-mcp.exe
+       args: []
+       timeout: 7200
+   ```
+
+   Ou, para uma sessão avulsa:
+
+   ```powershell
+   goose session --with-extension "C:\Users\voce\sciforge\.venv\Scripts\sciforge-mcp.exe"
+   ```
+
+   (Confira os flags da sua versão com `goose session --help`; `goose configure` → *Add Extension* →
+   *Command-line Extension* faz o mesmo registro de forma interativa.)
+
+3. **Receitas por fase** (`goose_recipes/`): cada uma carrega só a extensão `sciforge`, sem extensões de
+   leitura de arquivos, e deve rodar em uma sessão nova do Goose. Assim o rascunho nunca entra no contexto
+   do agente. As receitas chamam `sciforge-mcp` pelo nome, então ponha o venv no `PATH` antes:
+
+   ```powershell
+   $env:Path = "$PWD\.venv\Scripts;$env:Path"
+   goose run --recipe goose_recipes\01_intake.yaml --params project_dir=C:\pesquisa\meu_estudo
+   goose run --recipe goose_recipes\02_research_swarm.yaml --params project_dir=C:\pesquisa\meu_estudo
+   # ... 03_architect (Portão #1), 04_analyst (Portão #2), 05_storyboard, 06_editorial (Portão #3)
+   ```
+
+   Nos portões, o Goose mostra o resumo e só chama `sciforge_approve_gate` depois que você escrever que
+   aprova.
+
 ---
 
 ## 5. Estrutura
 
 ```
+goose_recipes/     6 receitas Goose (uma por fase)
 config/            settings.yaml · csl/ (vancouver, abnt) · checklists/ (STROBE, RECORD, RECORD_PE, TRIPOD_AI)
 scripts_r/         profile_data.R · init_renv.R · export_table_helper.R (helpers sf_*)
-src/core/          config · schemas (Pydantic) · llm_client · budget_guard · state_manager
+src/core/          config · platform_utils · schemas (Pydantic) · llm_client · budget_guard · state_manager
 src/tools/         literature_swarm · data_profiler · r_sandbox · visual_inspector · integrity_checks · quarto_renderer
 src/agents/        base · phase1_intake … phase6_editorial
 src/mcp_server/    server.py
 src/orchestrator.py  CLI Typer/Rich
 prompts/           system prompts editáveis (01 … 06c)
 workspace_template/  esqueleto copiado por `sciforge init`
-tests/             fixtures sintéticas + test_pipeline_components.py
+tests/             fixtures sintéticas + test_pipeline_components.py + test_hardening.py
 ```
 
 Os prompts em `prompts/*.md` são lidos a cada chamada: edite-os para ajustar estilo, rigor ou idioma
@@ -207,6 +312,13 @@ sem tocar no código.
 pytest -q                                   # unidade + ponta a ponta com LLM falso (R necessário para alguns)
 SCIFORGE_RUN_INTEGRATION=1 pytest -m integration   # consulta as APIs reais de literatura
 ```
+
+`test_hardening.py` cobre: varredura sem `TODO`/`NotImplementedError`/`pass`/funções vazias; análise
+estática garantindo que `phase2`…`phase6` não referenciam `rascunho.*` nem os gráficos preliminares (e um
+teste que falha se as Fases 5–6 tentarem abrir esses arquivos em tempo de execução); toda E/S com
+`encoding="utf-8"` e subprocessos só via `platform_utils.run_command`; resolução de `Rscript`/`quarto`
+num layout de Windows simulado; sessão STDIO real do MCP; receitas Goose; roteamento por fase; provedores
+Claude e OpenRouter.
 
 As fixtures em `tests/fixtures/` são **sintéticas**: `dados_sinteticos.csv` (N = 500, com missings
 propositais, uma categoria rara para testar a supressão de células e identificadores falsos),

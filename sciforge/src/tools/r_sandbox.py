@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -23,6 +22,7 @@ from typing import Awaitable, Callable, Optional
 
 from ..core.budget_guard import AttemptLimitReached, BudgetGuard
 from ..core.config import SCRIPTS_R_DIR
+from ..core.platform_utils import find_rscript, run_command
 
 # --------------------------------------------------------------------------------------------
 # Sanitizador de PII
@@ -175,7 +175,7 @@ class RSandbox:
         self.workspace_root = Path(workspace_root).resolve()
         self.analysis_dir = Path(analysis_dir or self.workspace_root / "02_analise").resolve()
         self.timeout_s = timeout_s
-        self.rscript = rscript or shutil.which("Rscript")
+        self.rscript = rscript or find_rscript()
 
     @property
     def available(self) -> bool:
@@ -184,8 +184,9 @@ class RSandbox:
     def env(self) -> dict[str, str]:
         env = dict(os.environ)
         env.update({
-            "SCIFORGE_WORKSPACE": str(self.workspace_root),
-            "SCIFORGE_R_HELPERS": str(SCRIPTS_R_DIR / "export_table_helper.R"),
+            # Barras normais: o R aceita em qualquer SO e evita escapes de "\\" no Windows.
+            "SCIFORGE_WORKSPACE": self.workspace_root.as_posix(),
+            "SCIFORGE_R_HELPERS": (SCRIPTS_R_DIR / "export_table_helper.R").as_posix(),
             "R_LIBS_USER": env.get("R_LIBS_USER", ""),
             "LANG": env.get("LANG", "C.UTF-8"),
         })
@@ -204,14 +205,13 @@ class RSandbox:
             raise RuntimeError("Rscript não encontrado no PATH. Instale o R (https://cran.r-project.org).")
         start = time.monotonic()
         try:
-            proc = subprocess.run(
-                [self.rscript, str(script), *(args or [])], cwd=str(cwd or self.analysis_dir),
-                env=self.env(), capture_output=True, text=True, timeout=self.timeout_s)
+            proc = run_command([self.rscript, script, *(args or [])], cwd=cwd or self.analysis_dir,
+                               env=self.env(), timeout=self.timeout_s)
             return RunResult(script.name, proc.returncode, sanitize_output(proc.stdout),
                              sanitize_output(proc.stderr), time.monotonic() - start)
         except subprocess.TimeoutExpired as exc:
-            out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            err = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            out = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            err = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
             return RunResult(script.name, -9, sanitize_output(out), sanitize_output(err),
                              time.monotonic() - start, timed_out=True)
 

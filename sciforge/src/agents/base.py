@@ -67,9 +67,9 @@ class PhaseContext:
             data = data.model_dump(mode="json")
         Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def write_text(self, path: Path, text: str) -> None:
+    def write_text(self, path: Path, text: str, encoding: str = "utf-8") -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(text, encoding="utf-8")
+        Path(path).write_text(text, encoding=encoding)
 
     def inventario(self) -> InventarioSemente:
         return InventarioSemente.model_validate(self.read_json(self.ws.inventario))

@@ -98,7 +98,7 @@ class Phase6Editorial(PhaseAgent):
         renders = render_project(ws.entrega, formats)
         self.ctx.write_text(ws.entrega / "relatorio_auditoria_final.md",
                             ic.render_audit_markdown(final_report) + "\n## Renderização\n\n" +
-                            "\n".join(f"- {doc} [{fmt}]: {out}" for doc, r in renders.items() for fmt, out in r.items()) + "\n")
+                            "\n".join(f"- {doc} [{fmt}]: {out}" for doc, r in renders.items() for fmt, out in r.items()) + "\n", encoding="utf-8")
         return {"qmd": {k: str(v) for k, v in qmd_paths.items()}, "renderizacao": renders, "kit": kit,
                 "erros_auditoria": len(final_report.erros), "metricas": {k: v for k, v in final_report.metricas.items()
                                                                        if not k.startswith("_")}}
@@ -290,7 +290,7 @@ class Phase6Editorial(PhaseAgent):
             if locs and not locs_ok:
                 status = "verificar (local inválido)"
             filled.append({**it, "local": "; ".join(locs_ok) or "—", "status": status})
-        self.ctx.write_text(ws.entrega / "checklist_preenchido.md", render_checklist_markdown(checklist_name, filled))
+        self.ctx.write_text(ws.entrega / "checklist_preenchido.md", render_checklist_markdown(checklist_name, filled), encoding="utf-8")
 
         meta = json.loads((self.ctx.state.get_step(self.phase, "humanizado:Titulo_Resumo")) or "{}")
         rules = parse_journal_rules(self.ctx.journal_rules_text())
@@ -302,7 +302,7 @@ class Phase6Editorial(PhaseAgent):
                   f"{compact_json(self.results.get('resultados_principais', []), 4000)}\n"
                   "Redija a carta de apresentação ao editor em Markdown."),
             phase=self.phase, role="writer"))
-        self.ctx.write_text(ws.entrega / "cover_letter.md", _strip_fences(letter))
+        self.ctx.write_text(ws.entrega / "cover_letter.md", _strip_fences(letter), encoding="utf-8")
         return {"checklist": str(ws.entrega / "checklist_preenchido.md"), "cover_letter": str(ws.entrega / "cover_letter.md"),
                 "auditoria": str(ws.entrega / "relatorio_auditoria_final.md")}
 

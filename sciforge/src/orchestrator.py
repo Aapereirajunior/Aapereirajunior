@@ -36,6 +36,7 @@ from .agents.phase6_editorial import Phase6Editorial
 from .core.budget_guard import BudgetExceeded
 from .core.config import CONFIG_DIR, TEMPLATE_DIR, Workspace
 from .core.llm_client import PrivacyViolation
+from .core.platform_utils import utf8_console
 from .core.state_manager import GATES, PHASES, StateManager
 from .tools.integrity_checks import FirewallViolation
 
@@ -47,6 +48,10 @@ PHASE_CLASSES = {
     "phase4": Phase4Analyst, "phase5": Phase5Storyboard, "phase6": Phase6Editorial,
 }
 GATE_AFTER = {v: k for k, v in GATES.items()}
+
+
+class PhaseOrderError(RuntimeError):
+    """Tentativa de executar uma fase antes das anteriores ou com portão humano pendente."""
 
 
 def _log(msg: str) -> None:
@@ -125,6 +130,58 @@ async def run_pipeline(project: Path, auto_approve: bool = False, until: Optiona
     return "phase6"
 
 
+async def run_single_phase(project: Path, phase: str, ctx: PhaseContext | None = None,
+                           log=None) -> dict:
+    """Executa UMA fase (usado pelo servidor MCP/receitas Goose e por `sciforge phase`).
+
+    Exige que as fases anteriores estejam concluídas e que os portões humanos anteriores estejam
+    aprovados. Retorna o resultado e, se a fase tiver portão, o resumo para decisão humana.
+    """
+    if phase not in PHASES:
+        raise PhaseOrderError(f"Fase desconhecida: {phase} (use {', '.join(PHASES)})")
+    ctx = ctx or PhaseContext.create(Path(project).resolve(), log=log or _log)
+    idx = PHASES.index(phase)
+    for prev in PHASES[:idx]:
+        if ctx.state.phase_status(prev) != "done":
+            raise PhaseOrderError(f"{prev} ainda não foi concluída; execute-a antes de {phase}.")
+        gate = GATE_AFTER.get(prev)
+        if gate and ctx.state.gate_status(gate) != "approved":
+            raise PhaseOrderError(f"Portão humano {gate} (após {prev}) ainda não foi aprovado pelo pesquisador.")
+    if ctx.state.phase_status(phase) == "done":
+        result: dict = {"aviso": f"{phase} já estava concluída; use `sciforge reset` para refazê-la."}
+    else:
+        if ctx.state.phase_status(phase) in ("failed", "blocked", "running"):
+            ctx.state.set_phase(phase, "pending", "retomada")
+        result = await PHASE_CLASSES[phase](ctx).execute()
+    gate = GATE_AFTER.get(phase)
+    pending = gate if gate and ctx.state.gate_status(gate) != "approved" else None
+    return {"fase": phase, "status": ctx.state.phase_status(phase), "resultado": result,
+            "portao_pendente": pending, "resumo_para_o_portao": _gate_summary(ctx, gate) if pending else None}
+
+
+def project_status(project: Path) -> dict:
+    """Estado legível por máquina: fases, portões, custos e próxima ação recomendada."""
+    ws = Workspace(Path(project).resolve())
+    st = StateManager(ws.db_path)
+    usage = st.usage_by_phase()
+    phases = []
+    next_action = "Projeto concluído."
+    for row in st.phases():
+        gate = GATE_AFTER.get(row["name"])
+        phases.append({"fase": row["name"], "status": row["status"], "mensagem": (row["message"] or "")[:500],
+                       "portao": gate, "status_portao": st.gate_status(gate) if gate else None,
+                       "uso": usage.get(row["name"], {"calls": 0, "tokens": 0, "cost": 0.0})})
+    for p in phases:
+        if p["status"] != "done":
+            next_action = f"Executar {p['fase']} (status atual: {p['status']})."
+            break
+        if p["portao"] and p["status_portao"] != "approved":
+            next_action = f"Aguardando decisão humana no {p['portao']} (após {p['fase']})."
+            break
+    return {"projeto": str(ws.root), "fases": phases, "custo_total_usd": round(st.total_cost(), 4),
+            "proxima_acao": next_action}
+
+
 def _run(project: Path, auto_approve: bool, until: Optional[str]) -> None:
     try:
         result = asyncio.run(run_pipeline(project.resolve(), auto_approve, until))
@@ -187,6 +244,34 @@ def resume(projeto: Path = typer.Argument(...),
             st.set_phase(p, "pending", "retomada")
     console.print(f"Retomando a partir de: [bold]{st.next_phase() or 'concluído'}[/bold]")
     _run(projeto, auto_approve, None)
+
+
+@app.command()
+def phase(projeto: Path = typer.Argument(...), fase: str = typer.Argument(..., help="phase1..phase6")) -> None:
+    """Executa uma única fase (respeitando ordem e portões)."""
+    try:
+        res = asyncio.run(run_single_phase(projeto, fase))
+    except PhaseOrderError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2)
+    console.print_json(json.dumps(res, ensure_ascii=False, default=str))
+
+
+@app.command()
+def models(projeto: Optional[Path] = typer.Argument(None, help="Projeto (aplica settings.override.yaml)")) -> None:
+    """Mostra qual provedor/modelo atende cada papel em cada fase."""
+    from .core.config import load_settings
+    from .core.llm_client import LLMClient
+    settings = load_settings(projeto.resolve() if projeto else None)
+    table = LLMClient(settings).routing_table()
+    t = Table(title=f"Roteamento LLM (privacy_mode={settings.get('privacy_mode')})")
+    roles = ["default", "fast", "vision", "writer", "reviewer"]
+    t.add_column("Fase")
+    for r in roles:
+        t.add_column(r)
+    for ph, row in table.items():
+        t.add_row(ph, *[row[r] for r in roles])
+    console.print(t)
 
 
 @app.command()
@@ -259,6 +344,7 @@ def csl(estilo: str = typer.Argument(..., help="Nome do estilo (ex.: the-lancet,
 
 
 def main() -> None:
+    utf8_console()
     app()
 
 

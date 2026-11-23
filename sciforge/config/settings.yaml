@@ -17,34 +17,79 @@ llm:
       api_key_env: GEMINI_API_KEY
       base_url: https://generativelanguage.googleapis.com/v1beta
       timeout_s: 180
+    claude:                       # API direta da Anthropic, via SDK oficial `anthropic`
+      kind: anthropic
+      api_key_env: ANTHROPIC_API_KEY
+      effort: high                # low | medium | high | xhigh | max (controla a profundidade de raciocínio)
+      fallbacks: default          # reexecuta recusas em outro modelo no servidor; null desativa
+      timeout_s: 600
     openai:
       kind: openai
       api_key_env: OPENAI_API_KEY
       base_url_env: OPENAI_BASE_URL
       base_url: https://api.openai.com/v1
       timeout_s: 180
+    openrouter:                   # um endpoint, centenas de modelos (slugs em https://openrouter.ai/models)
+      kind: openrouter
+      api_key_env: OPENROUTER_API_KEY
+      base_url: https://openrouter.ai/api/v1
+      timeout_s: 300
+      extra_headers:
+        X-Title: SciForge
     ollama:
       kind: ollama
       host_env: OLLAMA_HOST
       base_url: http://localhost:11434
       timeout_s: 900
       local: true
-  # Papel -> provedor/modelo. "sensitive" é sempre forçado ao provedor local em strict/hybrid.
+
+  # Papéis globais (usados quando a fase não define o papel em `phases`).
+  # "local"/"local_vision" atendem as chamadas forçadas ao modelo local pelo privacy_mode.
   roles:
-    default:     { provider: gemini, model: gemini-2.5-pro }
-    fast:        { provider: gemini, model: gemini-2.5-flash }
-    vision:      { provider: gemini, model: gemini-2.5-flash }
-    writer:      { provider: gemini, model: gemini-2.5-pro }
-    reviewer:    { provider: openai, model: gpt-4.1 }
-    local:       { provider: ollama, model: qwen2.5-coder:14b }
+    default:      { provider: gemini, model: gemini-2.5-pro }
+    fast:         { provider: gemini, model: gemini-2.5-flash }
+    vision:       { provider: gemini, model: gemini-2.5-flash }
+    writer:       { provider: claude, model: claude-opus-5-5 }
+    reviewer:     { provider: openrouter, model: openai/gpt-4.1 }
+    local:        { provider: ollama, model: qwen2.5-coder:14b }
     local_vision: { provider: ollama, model: qwen2.5vl:7b }
+
+  # Roteamento por fase (prioridade sobre `roles`). Ordem de resolução:
+  #   phases.<fase>.<papel>  →  phases.<fase>."*"  →  roles.<papel>  →  roles.default
+  # Em privacy_mode strict/hybrid, as Fases 1 e 4 ignoram esta tabela e usam roles.local/local_vision
+  # (ou phases.<fase>.local, se definido — que também precisa ser um provedor local).
+  phases:
+    phase1:                       # desconstrução + leitura dos gráficos preliminares (Gemini em modo cloud)
+      "*":    { provider: gemini, model: gemini-2.5-pro }
+      vision: { provider: gemini, model: gemini-2.5-flash }
+    phase2:                       # enxame de literatura e fichamento
+      "*":    { provider: gemini, model: gemini-2.5-pro }
+      fast:   { provider: gemini, model: gemini-2.5-flash }
+    phase3:                       # Arquiteto (Claude) atacado por um Revisor #2 de outra família de modelos
+      "*":      { provider: claude, model: claude-opus-5-5 }
+      reviewer: { provider: openrouter, model: openai/gpt-4.1 }
+    phase4:                       # em hybrid/strict tudo vai ao Ollama; em cloud, QA visual com Gemini
+      "*":    { provider: claude, model: claude-opus-5-5 }
+      vision: { provider: gemini, model: gemini-2.5-flash }
+    phase5:
+      "*":    { provider: claude, model: claude-opus-5-5 }
+    phase6:
+      "*":      { provider: claude, model: claude-opus-5-5 }
+      fast:     { provider: gemini, model: gemini-2.5-flash }     # juiz de citações e checklist
+      reviewer: { provider: openrouter, model: openai/gpt-4.1 }
+
   # Preço em USD por 1M tokens (entrada, saída). Modelos locais custam 0.
+  # Modelos via OpenRouter usam o slug como chave (ex.: "openai/gpt-4.1").
   pricing:
     gemini-2.5-pro:   [1.25, 10.0]
     gemini-2.5-flash: [0.30, 2.50]
+    claude-opus-5-5:  [4.00, 20.0]
+    claude-sonnet-5-5: [2.00, 10.0]
+    claude-haiku-5-5: [0.10, 0.50]
     gpt-4.1:          [2.00, 8.00]
     gpt-4.1-mini:     [0.40, 1.60]
-  temperature: 0.3
+    openai/gpt-4.1:   [2.00, 8.00]
+  temperature: 0.3              # ignorado pelo provedor Claude (os modelos atuais não aceitam temperature)
   max_output_tokens: 8192
 
 # Trava 8 — disjuntor de custo

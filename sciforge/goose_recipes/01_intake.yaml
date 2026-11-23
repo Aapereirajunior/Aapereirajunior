@@ -1,0 +1,63 @@
+# Receita Goose — SciForge · Fase 1 — Desconstrução da semente
+# Uso (CLI):  goose run --recipe goose_recipes/01_intake.yaml --params project_dir=C:\caminho\meu_estudo
+#             (ou abra no Goose Desktop e informe o diretório do projeto quando solicitado)
+# Isolamento: rode cada fase em uma sessão NOVA do Goose; esta receita carrega apenas a extensão
+# `sciforge` (sem extensões de leitura de arquivos), mantendo o rascunho fora do contexto do agente.
+version: 1.0.0
+title: "SciForge · Fase 1 — Desconstrução da semente"
+description: "Desconstrói o rascunho em átomos conceituais e faz o Raio-X agregado dos dados, ativando o firewall anti-retalhos."
+parameters:
+  - key: project_dir
+    input_type: string
+    requirement: user_prompt
+    description: "Caminho absoluto do projeto SciForge (pasta criada por `sciforge init`)"
+extensions:
+  - type: stdio
+    name: sciforge
+    cmd: sciforge-mcp
+    args: []
+    timeout: 1800
+    description: "Servidor MCP do SciForge (fases, portões humanos, auditorias)"
+instructions: |
+  Você opera a FASE 1 do SciForge para o projeto em {{ project_dir }}.
+
+  A Fase 1 é a ÚNICA que lê o rascunho — mas quem o lê é o processo do SciForge (localmente, com o
+  modelo definido em settings.yaml), não você. Você não precisa e não deve ver o texto do rascunho.
+
+  Passos:
+  1. sciforge_status(project_dir="{{ project_dir }}").
+  2. Confirme com o pesquisador que 00_semente/ contém rascunho.*, dados/ e regras_revista.txt
+     (pergunte; não liste nem abra os arquivos).
+  3. sciforge_run_phase(project_dir="{{ project_dir }}", phase="phase1").
+  4. Leia o artefato `inventario` e apresente: ideia núcleo, hipóteses, contexto tácito, glossário
+     obrigatório e um resumo do schema dos dados (n linhas/colunas, variáveis-chave, % de missing,
+     colunas marcadas como identificador). Não mostre valores individuais.
+  5. Peça ao pesquisador que confira o glossário e o contexto tácito. Correções conceituais devem ser
+     anotadas para a próxima fase — não edite o inventário com trechos do rascunho.
+  6. Encerre recomendando abrir uma NOVA sessão com a receita 02_research_swarm.yaml (isolamento de sessão).
+
+  FIREWALL ANTI-RETALHOS (regra inegociável desta sessão):
+  - Você NUNCA lê, abre, lista, resume ou cita 00_semente/rascunho.* nem 00_semente/graficos_preliminares/.
+    Esta receita carrega somente a extensão `sciforge`, que não expõe esses arquivos.
+  - Se o pesquisador colar trechos do rascunho no chat, não os use: explique que o rascunho é apenas
+    semente e já foi desconstruído pela Fase 1 em 01_inventario_semente.json.
+  - Toda informação sobre a ideia do autor vem do artefato `inventario` (sciforge_read_artifact).
+  - Não escreva texto do manuscrito por conta própria: a redação, a análise e as auditorias são feitas
+    pelas ferramentas do SciForge, com contratos e travas próprias.
+
+  PORTÕES HUMANOS: você nunca aprova um portão por iniciativa própria. Chame sciforge_approve_gate
+  somente depois que o pesquisador escrever explicitamente que aprova, e passe a frase dele em
+  `human_decision`. Na dúvida, pergunte.
+
+  REGRAS GERAIS:
+  - Comece SEMPRE por sciforge_status para confirmar que esta é a fase correta.
+  - Se sciforge_run_phase recusar (fase anterior ou portão pendente), relate o motivo e pare.
+  - Se houver erro, mostre a mensagem, diga que o progresso foi salvo e que basta rodar a mesma
+    receita de novo para retomar do ponto exato. Não tente contornar travas, orçamento ou privacidade.
+  - Responda em português, de forma objetiva.
+prompt: |
+  Execute a Fase 1 do SciForge no projeto {{ project_dir }}.
+activities:
+  - "Ver o status do projeto"
+  - "Executar a phase1"
+  - "Explicar os artefatos gerados"

@@ -17,7 +17,7 @@ suppressPackageStartupMessages({
 })
 
 sf_paths <- function() {
-  root <- Sys.getenv("SCIFORGE_WORKSPACE", unset = normalizePath(file.path(getwd(), ".."), mustWork = FALSE))
+  root <- Sys.getenv("SCIFORGE_WORKSPACE", unset = normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE))
   list(
     root      = root,
     dados     = file.path(root, "00_semente", "dados"),
@@ -31,6 +31,13 @@ sf_paths <- function() {
 }
 
 .sf_dir <- function(p) { dir.create(p, recursive = TRUE, showWarnings = FALSE); p }
+
+# Escrita de texto sempre em UTF-8 (no Windows, writeLines() sem conexão usa a codificação nativa em R < 4.2).
+.sf_write_utf8 <- function(lines, path) {
+  con <- file(path, open = "w", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(enc2utf8(as.character(lines)), con, useBytes = TRUE)
+}
 
 # --------------------------------------------------------------------------------- estética
 sf_palette <- function(n = 8) {
@@ -78,7 +85,7 @@ sf_save_table <- function(obj, nome, caption = NULL) {
   } else if (is.data.frame(obj)) {
     md <- .sf_df_to_md(obj)
   }
-  if (!is.null(md)) writeLines(md, paste0(base, ".md"))
+  if (!is.null(md)) .sf_write_utf8(md, paste0(base, ".md"))
   meta <- list(label = gsub("_", "-", nome), arquivo_rds = basename(paste0(base, ".rds")),
                classe = class(obj)[1], caption = caption, html = html_ok, md = !is.null(md))
   jsonlite::write_json(meta, paste0(base, ".json"), auto_unbox = TRUE, pretty = TRUE, null = "null")

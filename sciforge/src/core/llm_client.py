@@ -1,7 +1,8 @@
-"""Roteador LLM: Gemini API, endpoints OpenAI-compatíveis e Ollama local.
+"""Roteador LLM: Gemini API, Claude (SDK oficial `anthropic`), OpenAI, OpenRouter e Ollama local.
 
 Responsabilidades:
-- roteamento por papel (default, writer, reviewer, vision, local...) definido em settings.yaml;
+- roteamento por FASE e por papel (default, writer, reviewer, vision, local...) definido em
+  settings.yaml (`llm.phases` tem prioridade sobre `llm.roles`);
 - aplicação do privacy_mode (Trava 5): chamadas marcadas `sensitive=True` ou feitas nas fases
   protegidas só podem ir a um provedor local; em `strict`, nenhuma chamada sai da máquina;
 - contagem de tokens (usage real das APIs, estimativa como fallback) e custo, via BudgetGuard;
@@ -40,6 +41,10 @@ class LLMError(RuntimeError):
     """Erro de comunicação com o provedor ou resposta inválida."""
 
 
+class LLMRefusal(LLMError):
+    """O modelo recusou a requisição (stop_reason = refusal) mesmo após os fallbacks."""
+
+
 @dataclass
 class LLMResponse:
     text: str
@@ -63,7 +68,8 @@ class Provider(Protocol):
     name: str
     local: bool
 
-    async def generate(self, model: str, req: LLMRequest) -> LLMResponse: ...
+    async def generate(self, model: str, req: LLMRequest) -> LLMResponse:
+        """Envia a requisição ao provedor e devolve texto + contagem de tokens."""
 
 
 def estimate_tokens(text: str) -> int:
@@ -146,6 +152,9 @@ class OpenAICompatProvider:
             "base_url", "https://api.openai.com/v1")
         self.base_url = self.base_url.rstrip("/")
         self.timeout = float(cfg.get("timeout_s", 180))
+        # OpenRouter (e outros gateways) aceitam cabeçalhos extras de identificação do app.
+        self.extra_headers = {str(k): str(v) for k, v in (cfg.get("extra_headers") or {}).items()}
+        self.json_mode_supported = bool(cfg.get("json_mode", True))
 
     async def generate(self, model: str, req: LLMRequest) -> LLMResponse:
         if not self.api_key and not self.local:
@@ -162,9 +171,10 @@ class OpenAICompatProvider:
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
         }
-        if req.json_mode:
+        if req.json_mode and self.json_mode_supported:
             body["response_format"] = {"type": "json_object"}
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        headers.update(self.extra_headers)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             data = await _post_with_retry(client, f"{self.base_url}/chat/completions", json_body=body,
                                           headers=headers)
@@ -207,7 +217,88 @@ class OllamaProvider:
                            int(data.get("eval_count", estimate_tokens(text))), self.name, model)
 
 
-_PROVIDER_KINDS = {"gemini": GeminiProvider, "openai": OpenAICompatProvider, "ollama": OllamaProvider}
+class AnthropicProvider:
+    """Claude via SDK oficial `anthropic` (streaming + fallback de recusa no servidor).
+
+    - Não envia `temperature` (removido nos modelos atuais) nem `thinking` (adaptativo por padrão).
+    - Profundidade controlada por `output_config.effort` (configurável por provedor; padrão "high").
+    - `fallbacks: "default"` (beta server-side-fallback-2026-07-01) reexecuta automaticamente uma
+      requisição recusada em outro modelo; defina `fallbacks: null` no settings.yaml para desativar.
+    """
+
+    local = False
+    FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+    def __init__(self, name: str, cfg: dict, client: Any = None):
+        self.name = name
+        self.api_key_env = cfg.get("api_key_env", "ANTHROPIC_API_KEY")
+        self.timeout = float(cfg.get("timeout_s", 600))
+        self.effort = cfg.get("effort", "high")
+        self.fallbacks = cfg.get("fallbacks", "default")
+        self.base_url = cfg.get("base_url")
+        self._client = client
+
+    def client(self) -> Any:
+        if self._client is None:
+            try:
+                import anthropic
+            except ImportError as exc:  # dependência declarada em pyproject.toml
+                raise LLMError("Pacote `anthropic` ausente: pip install anthropic") from exc
+            kwargs: dict[str, Any] = {"timeout": self.timeout, "max_retries": 4}
+            if os.environ.get(self.api_key_env):
+                kwargs["api_key"] = os.environ[self.api_key_env]
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            self._client = anthropic.AsyncAnthropic(**kwargs)
+        return self._client
+
+    async def generate(self, model: str, req: LLMRequest) -> LLMResponse:
+        content: list[dict[str, Any]] = []
+        for img in req.images:
+            mime, data = _image_b64(img)
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": data}})
+        user_text = req.user
+        if req.json_mode:
+            user_text += "\n\nResponda somente com JSON válido, sem texto fora do objeto."
+        content.append({"type": "text", "text": user_text})
+        params: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max(req.max_tokens, 16000),
+            "system": req.system,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if self.effort:
+            params["output_config"] = {"effort": self.effort}
+        if self.fallbacks:
+            params["betas"] = [self.FALLBACK_BETA]
+            params["fallbacks"] = self.fallbacks
+        try:
+            async with self.client().beta.messages.stream(**params) as stream:
+                message = await stream.get_final_message()
+        except LLMError:
+            raise
+        except Exception as exc:  # erros tipados do SDK (status, conexão) viram LLMError
+            raise LLMError(f"Claude ({model}): {type(exc).__name__}: {exc}") from exc
+        if message.stop_reason == "refusal":
+            details = getattr(message, "stop_details", None)
+            category = getattr(details, "category", None) if details else None
+            raise LLMRefusal(f"Claude recusou a requisição (categoria: {category or 'não informada'})")
+        text = "".join(getattr(b, "text", "") for b in message.content if getattr(b, "type", "") == "text")
+        usage = message.usage
+        return LLMResponse(text, int(getattr(usage, "input_tokens", 0) or estimate_tokens(req.system + req.user)),
+                           int(getattr(usage, "output_tokens", 0) or estimate_tokens(text)), self.name,
+                           getattr(message, "model", model) or model)
+
+
+_PROVIDER_KINDS = {"gemini": GeminiProvider, "openai": OpenAICompatProvider, "openrouter": OpenAICompatProvider,
+                   "anthropic": AnthropicProvider, "ollama": OllamaProvider}
+
+
+def _try_json(text: str) -> tuple[Any, bool]:
+    try:
+        return json.loads(text), True
+    except json.JSONDecodeError:
+        return None, False
 
 
 def extract_json(text: str) -> Any:
@@ -217,10 +308,9 @@ def extract_json(text: str) -> Any:
     candidates = [fence.group(1).strip()] if fence else []
     candidates.append(text)
     for cand in candidates:
-        try:
-            return json.loads(cand)
-        except json.JSONDecodeError:
-            pass  # segue para a varredura de chaves balanceadas abaixo
+        parsed, ok = _try_json(cand)
+        if ok:
+            return parsed
         for opener, closer in (("{", "}"), ("[", "]")):
             start = cand.find(opener)
             if start == -1:
@@ -269,6 +359,7 @@ class LLMClient:
         self.privacy_mode: str = settings.get("privacy_mode", "hybrid")
         llm_cfg = settings.get("llm", {})
         self.roles: dict[str, dict] = llm_cfg.get("roles", {})
+        self.phases: dict[str, dict] = llm_cfg.get("phases") or {}
         self.pricing: dict[str, list[float]] = llm_cfg.get("pricing", {})
         self.temperature = float(llm_cfg.get("temperature", 0.3))
         self.max_tokens = int(llm_cfg.get("max_output_tokens", 8192))
@@ -284,26 +375,50 @@ class LLMClient:
                 self.providers[name] = _PROVIDER_KINDS[kind](name, cfg)
 
     # ------------------------------------------------------------------ roteamento
+    def _spec_for(self, phase: str, role: str) -> tuple[Optional[dict], str]:
+        """Ordem: llm.phases[fase][papel] → llm.phases[fase]["*"] → llm.roles[papel] → llm.roles.default."""
+        phase_cfg = self.phases.get(phase) or {}
+        if role in phase_cfg:
+            return phase_cfg[role], f"phases.{phase}.{role}"
+        if "*" in phase_cfg and role not in ("local", "local_vision"):
+            return phase_cfg["*"], f"phases.{phase}.*"
+        if role in self.roles:
+            return self.roles[role], f"roles.{role}"
+        return self.roles.get("default"), "roles.default"
+
     def resolve(self, role: str, phase: str, sensitive: bool, vision: bool) -> tuple[Provider, str]:
         must_be_local = (
             self.privacy_mode == "strict"
             or (self.privacy_mode == "hybrid" and (sensitive or phase in PROTECTED_PHASES))
         )
         if must_be_local:
-            role = "local_vision" if vision and "local_vision" in self.roles else "local"
-        elif role not in self.roles:
-            role = "default"
-        spec = self.roles.get(role)
+            role = "local_vision" if vision and ("local_vision" in self.roles or "local_vision" in (self.phases.get(phase) or {})) else "local"
+        elif vision and role in ("default", "fast"):
+            role = "vision"
+        spec, origin = self._spec_for(phase, role)
         if not spec:
-            raise LLMError(f"Papel LLM não configurado: {role}")
+            raise LLMError(f"Papel LLM não configurado: {role} (fase {phase})")
         provider = self.providers.get(spec["provider"])
         if provider is None:
-            raise LLMError(f"Provedor não configurado: {spec['provider']}")
+            raise LLMError(f"Provedor '{spec['provider']}' ({origin}) não está em llm.providers")
         if must_be_local and not getattr(provider, "local", False):
             raise PrivacyViolation(
-                f"privacy_mode={self.privacy_mode}: chamada da {phase} exige provedor local, mas o papel "
-                f"'{role}' aponta para '{provider.name}'. Ajuste llm.roles.local em settings.yaml.")
+                f"privacy_mode={self.privacy_mode}: chamada da {phase} exige provedor local, mas {origin} aponta "
+                f"para '{provider.name}'. Ajuste llm.roles.local (ou llm.phases.{phase}.local) em settings.yaml.")
         return provider, spec["model"]
+
+    def routing_table(self) -> dict[str, dict[str, str]]:
+        """Resumo de qual provedor/modelo atende cada papel em cada fase (para `sciforge models`)."""
+        table: dict[str, dict[str, str]] = {}
+        for phase in ("phase1", "phase2", "phase3", "phase4", "phase5", "phase6"):
+            table[phase] = {}
+            for role in ("default", "fast", "vision", "writer", "reviewer"):
+                try:
+                    provider, model = self.resolve(role, phase, sensitive=False, vision=role == "vision")
+                    table[phase][role] = f"{provider.name}:{model}"
+                except (LLMError, PrivacyViolation) as exc:
+                    table[phase][role] = f"ERRO: {exc}"
+        return table
 
     def cost(self, model: str, input_tokens: int, output_tokens: int, provider: Provider) -> float:
         if getattr(provider, "local", False):

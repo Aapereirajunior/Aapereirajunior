@@ -11,7 +11,7 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) stop("Uso: Rscript init_renv.R <diretorio_analise> [pacotes]")
-proj <- normalizePath(args[[1]], mustWork = FALSE)
+proj <- normalizePath(args[[1]], winslash = "/", mustWork = FALSE)
 dir.create(proj, recursive = TRUE, showWarnings = FALSE)
 pkgs <- if (length(args) >= 2 && nzchar(args[[2]])) strsplit(args[[2]], ",")[[1]] else
   c("tidyverse", "gtsummary", "gt", "flextable", "ggplot2", "jsonlite", "broom")
@@ -61,7 +61,9 @@ if (requireNamespace("renv", quietly = TRUE)) {
   }
 }
 
-writeLines(capture.output(sessionInfo()), file.path(proj, "sessionInfo.txt"))
+con <- file(file.path(proj, "sessionInfo.txt"), open = "w", encoding = "UTF-8")
+writeLines(capture.output(sessionInfo()), con)
+close(con)
 if (requireNamespace("jsonlite", quietly = TRUE)) {
   jsonlite::write_json(status, file.path(proj, "renv_status.json"), auto_unbox = TRUE, pretty = TRUE)
 }

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from ..core.config import SCRIPTS_R_DIR
+from ..core.platform_utils import find_rscript, run_command
 from ..core.schemas import DatasetProfile
 from .r_sandbox import sanitize_output
 
@@ -26,15 +26,17 @@ def profile_dataset(path: Path | str, min_cell: int = 5, timeout_s: int = 600) -
         raise ProfilerError(f"Formato não suportado: {path.suffix}")
     if not path.exists():
         raise ProfilerError(f"Arquivo não encontrado: {path}")
-    rscript = shutil.which("Rscript")
+    rscript = find_rscript()
     if rscript is None:
         raise ProfilerError("Rscript não encontrado no PATH. Instale o R para usar o profiler.")
     mtime_before = path.stat().st_mtime_ns
     with tempfile.TemporaryDirectory(prefix="sciforge_profile_") as tmp:
         out_json = Path(tmp) / "perfil.json"
-        proc = subprocess.run(
-            [rscript, "--vanilla", str(SCRIPTS_R_DIR / "profile_data.R"), str(path), str(out_json), str(min_cell)],
-            capture_output=True, text=True, timeout=timeout_s)
+        try:
+            proc = run_command([rscript, "--vanilla", SCRIPTS_R_DIR / "profile_data.R", path, out_json, str(min_cell)],
+                               timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise ProfilerError(f"profile_data.R excedeu {timeout_s}s") from exc
         if proc.returncode != 0:
             raise ProfilerError(f"profile_data.R falhou:\n{sanitize_output(proc.stderr)[-3000:]}")
         data = json.loads(out_json.read_text(encoding="utf-8"))

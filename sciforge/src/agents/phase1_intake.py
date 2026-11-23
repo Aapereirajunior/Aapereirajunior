@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import re
-import shutil
-import subprocess
 import zipfile
 from pathlib import Path
 
+from ..core.platform_utils import find_pdftotext, run_command
 from ..core.schemas import InventarioSemente
 from ..tools.data_profiler import profile_dataset, profile_to_prompt
 from ..tools.integrity_checks import inventory_copy_check
@@ -40,8 +39,9 @@ def read_draft_file(path: Path) -> str:
         import html
         return html.unescape(re.sub(r"\n{3,}", "\n\n", text)).strip()
     if suffix == ".pdf":
-        if shutil.which("pdftotext"):
-            proc = subprocess.run(["pdftotext", "-layout", str(path), "-"], capture_output=True, text=True, timeout=120)
+        pdftotext = find_pdftotext()
+        if pdftotext:
+            proc = run_command([pdftotext, "-enc", "UTF-8", "-layout", path, "-"], timeout=120)
             if proc.returncode == 0:
                 return proc.stdout
         try:
